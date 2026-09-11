@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriveVoice AI - Google Drive Video Dubbing Studio</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="min-h-full flex flex-col font-sans antialiased bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/40 text-slate-100">
+
+    <!-- Top Navigation -->
+    <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+                    <i data-lucide="video" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-indigo-400">
+                        DriveVoice AI
+                    </h1>
+                    <p class="text-xs text-slate-400">Google Drive Video & Voice Dubbing Studio</p>
+                </div>
+            </div>
+
+            <!-- Drive Connection Status Pill -->
+            <div class="flex items-center space-x-3">
+                <div id="drive-status-container" class="flex items-center px-3 py-1.5 rounded-full text-xs font-medium border border-slate-700 bg-slate-800/80 text-slate-300">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse mr-2"></span>
+                    <span>Checking Drive connection...</span>
+                </div>
+                <button onclick="openCredentialsModal()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700" title="Drive Settings & Credentials">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Intro Banner / Instruction Notice if Service Account -->
+        <div id="service-account-notice" class="hidden mb-6 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/20 flex items-start space-x-3">
+            <i data-lucide="info" class="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5"></i>
+            <div class="text-xs text-indigo-200 leading-relaxed">
+                <span class="font-semibold text-white">Google Drive Tip:</span>
+                Your Drive connection uses a Service Account (<span id="sa-email-display" class="font-mono text-indigo-300 font-medium"></span>).
+                To access your personal Google Drive folders or videos, simply share the folder or file in Google Drive with this email as <strong class="text-white">Editor</strong>.
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+            <!-- LEFT COLUMN: Source Video Selection (7 cols) -->
+            <section class="lg:col-span-7 space-y-6">
+                <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
+                    <div class="flex items-center justify-between mb-5">
+                        <div class="flex items-center space-x-2">
+                            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-xs font-bold">1</span>
+                            <h2 class="text-base font-semibold text-white">Select Video Source</h2>
+                        </div>
+                        
+                        <!-- Source Switcher Tabs -->
+                        <div class="flex bg-slate-950/60 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+                            <button id="tab-drive-btn" onclick="switchSourceTab('drive')" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow transition flex items-center space-x-1.5">
+                                <i data-lucide="hard-drive" class="w-3.5 h-3.5"></i>
+                                <span>Google Drive</span>
+                            </button>
+                            <button id="tab-upload-btn" onclick="switchSourceTab('upload')" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
+                                <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                                <span>Local Upload</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TAB 1: Google Drive Browser -->
+                    <div id="drive-tab-content">
+                        <!-- Navigation Bar & Search -->
+                        <div class="flex items-center space-x-2 mb-4">
+                            <div class="flex-1 flex items-center bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs">
+                                <i data-lucide="search" class="w-4 h-4 text-slate-500 mr-2"></i>
+                                <input type="text" id="drive-search-input" placeholder="Search videos in Drive..." class="bg-transparent border-none outline-none text-slate-200 placeholder-slate-500 w-full" onkeydown="if(event.key==='Enter') searchDriveFiles()">
+                            </div>
+                            <button onclick="refreshDriveFiles()" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition border border-slate-700" title="Refresh">
+                                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+
+                        <!-- Breadcrumb navigation -->
+                        <div id="drive-breadcrumbs" class="flex items-center space-x-1 text-xs text-slate-400 mb-3 overflow-x-auto py-1">
+                            <button onclick="navigateToFolder(null)" class="hover:text-indigo-300 flex items-center font-medium">
+                                <i data-lucide="home" class="w-3.5 h-3.5 mr-1"></i> Root Drive
+                            </button>
+                        </div>
+
+                        <!-- Drive Files & Folders Container -->
+                        <div id="drive-files-container" class="border border-slate-800/80 bg-slate-950/40 rounded-xl max-h-80 overflow-y-auto divide-y divide-slate-800/50">
+                            <div class="p-8 text-center text-slate-500 text-xs">
+                                Loading Google Drive files...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: Local Video Upload -->
+                    <div id="upload-tab-content" class="hidden">
+                        <div id="drop-zone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-8 text-center transition cursor-pointer bg-slate-950/40" onclick="document.getElementById('local-video-input').click()">
+                            <input type="file" id="local-video-input" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,video/avi" class="hidden" onchange="handleLocalFileSelect(this)">
+                            <div class="w-12 h-12 rounded-full bg-indigo-900/30 text-indigo-400 mx-auto flex items-center justify-center mb-3">
+                                <i data-lucide="video" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-sm font-medium text-slate-200">Click or drag a video file here</p>
+                            <p class="text-xs text-slate-500 mt-1">Supports MP4, MKV, MOV, WebM, AVI (up to 500MB)</p>
+                        </div>
+                    </div>
+
+                    <!-- Currently Selected Video Card -->
+                    <div id="selected-video-card" class="hidden mt-5 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/30">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-600/30 text-indigo-300 flex items-center justify-center flex-shrink-0">
+                                    <i data-lucide="file-video" class="w-5 h-5"></i>
+                                </div>
+                                <div class="overflow-hidden">
+                                    <h4 id="selected-video-name" class="text-sm font-semibold text-white truncate max-w-sm">video.mp4</h4>
+                                    <p id="selected-video-details" class="text-xs text-slate-400">Google Drive &bull; 24.5 MB</p>
+                                </div>
+                            </div>
+                            <button onclick="clearSelectedVideo()" class="text-slate-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-800 transition" title="Deselect">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- RIGHT COLUMN: Language & Voice Configuration (5 cols) -->
+            <section class="lg:col-span-5 space-y-6">
+                <div class="bg-slate-900/70 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center space-x-2 mb-5">
+                            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-xs font-bold">2</span>
+                            <h2 class="text-base font-semibold text-white">Target Language & Voice</h2>
+                        </div>
+
+                        <!-- Target Language Dropdown -->
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                    Select Target Language
+                                </label>
+                                <select id="language-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition" onchange="onLanguageChange()">
+                                    <!-- Populated dynamically via JS -->
+                                </select>
+                            </div>
+
+                            <!-- Voice Persona & Gender Selection -->
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                    Neural Voice Persona
+                                </label>
+                                <select id="voice-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition">
+                                    <!-- Populated dynamically -->
+                                </select>
+                            </div>
+
+                            <!-- Duration & Voice Matching Options -->
+                            <div class="p-4 rounded-xl bg-slate-950/50 border border-slate-800 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="pr-2">
+                                        <div class="text-xs font-medium text-white">Voice Duration Matching</div>
+                                        <div class="text-[11px] text-slate-400">Auto-aligns translated voice speed with original video length</div>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="match-duration-toggle" checked class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                </div>
+
+                                <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                                    <div class="pr-2">
+                                        <div class="text-xs font-medium text-white">Background Audio Ducking</div>
+                                        <div class="text-[11px] text-slate-400">Preserves original background music at 15% volume</div>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="ducking-toggle" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Google Drive Folder Storage Choice -->
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                    Google Drive Storage Destination
+                                </label>
+                                <div class="space-y-2">
+                                    <label class="flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition">
+                                        <input type="radio" name="folder_mode" value="same_as_source" checked class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700">
+                                        <div class="text-xs">
+                                            <span class="font-medium text-slate-200">Save in &lt;Language&gt; folder alongside source video</span>
+                                            <p class="text-slate-500 text-[11px] mt-0.5">Creates folder e.g. <span class="font-mono text-indigo-300">Hindi/</span> inside source folder</p>
+                                        </div>
+                                    </label>
+                                    <label class="flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition">
+                                        <input type="radio" name="folder_mode" value="root" class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700">
+                                        <div class="text-xs">
+                                            <span class="font-medium text-slate-200">Save in root &lt;Language&gt; folder</span>
+                                            <p class="text-slate-500 text-[11px] mt-0.5">Creates folder e.g. <span class="font-mono text-indigo-300">Drive / Hindi/</span></p>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Convert Action Button -->
+                    <div class="pt-6">
+                        <button id="start-convert-btn" onclick="startConversion()" disabled class="w-full py-3.5 px-4 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i>
+                            <span>Convert Voice & Save Directly to Drive</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- PROGRESS & LIVE CONVERSION SECTION -->
+        <div id="conversion-progress-card" class="hidden mt-8 bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-6 shadow-2xl backdrop-blur-md">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center animate-spin">
+                        <i data-lucide="loader-2" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-white">Converting Video Voice</h3>
+                        <p id="progress-status-text" class="text-xs text-indigo-300">Processing audio and video streams...</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span id="progress-pct-badge" class="text-lg font-bold text-white">0%</span>
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-950 rounded-full h-3 p-0.5 overflow-hidden border border-slate-800">
+                <div id="progress-bar-fill" class="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+
+            <!-- Step Indicators -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 text-xs">
+                <div id="step-download" class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>1. Fetch Video</span>
+                </div>
+                <div id="step-stt" class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2">
+                    <i data-lucide="mic" class="w-4 h-4"></i>
+                    <span>2. Transcribe & Translate</span>
+                </div>
+                <div id="step-tts" class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2">
+                    <i data-lucide="volume-2" class="w-4 h-4"></i>
+                    <span>3. Voice Match & Remux</span>
+                </div>
+                <div id="step-upload" class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2">
+                    <i data-lucide="cloud-upload" class="w-4 h-4"></i>
+                    <span>4. Save to Drive Folder</span>
+                </div>
+            </div>
+
+            <!-- Live Transcript Log Preview -->
+            <div id="live-transcripts-box" class="hidden mt-6 pt-5 border-t border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80">
+                    <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Original Transcribed Speech</span>
+                    <p id="transcript-orig" class="text-xs text-slate-300 leading-relaxed max-h-32 overflow-y-auto italic"></p>
+                </div>
+                <div class="bg-slate-950/80 p-3.5 rounded-xl border border-indigo-900/40">
+                    <span class="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider block mb-1">Converted & Translated Speech</span>
+                    <p id="transcript-translated" class="text-xs text-indigo-200 leading-relaxed max-h-32 overflow-y-auto"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMPLETION CARD -->
+        <div id="completion-card" class="hidden mt-8 bg-gradient-to-br from-slate-900 to-indigo-950/50 border border-indigo-500/40 rounded-2xl p-6 shadow-2xl backdrop-blur-md">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                        <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Voice Dubbing & Drive Export Complete!</h3>
+                        <p class="text-xs text-emerald-300/90">Your video has been converted and uploaded directly to your Google Drive folder.</p>
+                    </div>
+                </div>
+
+                <!-- Direct Drive Action Buttons -->
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <a id="btn-open-drive-folder" href="#" target="_blank" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition flex items-center space-x-1.5">
+                        <i data-lucide="folder" class="w-4 h-4"></i>
+                        <span id="label-open-folder">Open Language Folder in Drive</span>
+                    </a>
+                    <a id="btn-open-drive-file" href="#" target="_blank" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center space-x-1.5">
+                        <i data-lucide="external-link" class="w-4 h-4"></i>
+                        <span>Open Video in Drive</span>
+                    </a>
+                    <a id="btn-download-local" href="#" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center space-x-1.5">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Download MP4</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Video Preview Comparison -->
+            <div class="mt-6">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Live Video Player Preview</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <div class="text-xs text-slate-400 mb-2 font-medium flex items-center justify-between">
+                            <span>Original Video</span>
+                        </div>
+                        <video id="player-original" controls class="w-full rounded-lg bg-black aspect-video"></video>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-indigo-500/40">
+                        <div class="text-xs text-indigo-300 mb-2 font-medium flex items-center justify-between">
+                            <span id="label-converted-preview">Converted Video with Translated Voice</span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-900/50 text-indigo-300">Synchronized</span>
+                        </div>
+                        <video id="player-converted" controls class="w-full rounded-lg bg-black aspect-video"></video>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- CREDENTIALS & DRIVE SETTINGS MODAL -->
+    <div id="credentials-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+                        <i data-lucide="key" class="w-4 h-4"></i>
+                    </div>
+                    <h3 class="text-sm font-bold text-white">Google Drive Credentials</h3>
+                </div>
+                <button onclick="closeCredentialsModal()" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="py-4 space-y-4">
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    You can configure Drive credentials via the GitHub Secret <code class="bg-slate-950 px-1.5 py-0.5 rounded text-indigo-300 font-mono">GDRIVE_CREDENTIALS</code> or upload/paste your Service Account JSON below:
+                </p>
+
+                <!-- Upload JSON file -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1.5">Upload credentials.json file</label>
+                    <input type="file" id="modal-file-input" accept=".json,application/json" class="w-full text-xs text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer">
+                </div>
+
+                <!-- Or Paste JSON -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1.5">Or paste Service Account JSON content</label>
+                    <textarea id="modal-json-text" rows="5" placeholder='{"type": "service_account", "project_id": "...", ...}' class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-indigo-500"></textarea>
+                </div>
+
+                <div id="modal-feedback" class="text-xs hidden p-3 rounded-lg"></div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-2 pt-4 border-t border-slate-800">
+                <button onclick="closeCredentialsModal()" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition">Cancel</button>
+                <button onclick="submitCredentials()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow transition">Save & Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
