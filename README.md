@@ -25,21 +25,38 @@ It extracts audio from video files stored in Google Drive (or local upload), tra
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start for Any Client or Collaborator
 
-### 1. Start the Application
-In your GitHub Codespace or terminal:
+### Opening in GitHub Codespaces (1-Click)
+1. On GitHub, click the green **<> Code** button ➔ **Codespaces** tab ➔ **Create codespace on main**.
+2. When the terminal opens, run just **ONE command**:
+   ```bash
+   ./run.sh
+   ```
+   *(This script automatically installs all required dependencies, configures FFmpeg, and launches the application on port 8000!)*
+3. A popup will appear: **"Open in Browser"**. Click it to use the studio!
+
+---
+
+### If Running Locally on Any Machine
 ```bash
+# 1. Clone repository
+git clone https://github.com/NarasimhaProcess/gdrivetovoiceconverter.git
+cd gdrivetovoiceconverter
+
+# 2. Run startup script (auto-installs requirements and starts)
 ./run.sh
 ```
-Or with uvicorn directly:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+Open your browser at `http://localhost:8000`.
 
-In GitHub Codespaces:
-- Codespaces will show a notification popup: *"Your application running on port 8000 is available"*.
-- Click **"Open in Browser"** (or click the **Ports** tab in VS Code and open port `8000`).
+---
+
+### How to Make the URL Public (So Clients Can Share It)
+Inside GitHub Codespaces terminal:
+```bash
+gh codespace ports visibility 8000:public -c "$CODESPACE_NAME"
+```
+Or right-click Port **8000** in the **Ports** tab and choose **Port Visibility ➔ Public**.
 
 ---
 
