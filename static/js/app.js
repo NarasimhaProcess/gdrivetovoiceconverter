@@ -443,6 +443,7 @@ async function startConversion() {
     progressCard.scrollIntoView({ behavior: "smooth" });
 
     // Gather parameters
+    const sourceLang = document.getElementById("source-language-select")?.value || "auto";
     const targetLang = document.getElementById("language-select").value;
     const voiceId = document.getElementById("voice-select").value;
     const matchDuration = document.getElementById("match-duration-toggle").checked;
@@ -450,6 +451,7 @@ async function startConversion() {
     const folderMode = document.querySelector('input[name="folder_mode"]:checked').value;
 
     const formData = new FormData();
+    formData.append("source_lang", sourceLang);
     formData.append("target_lang", targetLang);
     formData.append("voice_id", voiceId);
     formData.append("match_duration", matchDuration);

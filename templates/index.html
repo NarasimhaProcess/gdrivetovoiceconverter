@@ -166,8 +166,31 @@
                             <h2 class="text-base font-semibold text-white">Target Language & Voice</h2>
                         </div>
 
-                        <!-- Target Language Dropdown -->
+                        <!-- Language Dropdowns -->
                         <div class="space-y-4">
+                            <!-- Original Video Spoken Language -->
+                            <div>
+                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                                    Original Video Spoken Language / Accent
+                                </label>
+                                <select id="source-language-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition">
+                                    <option value="auto" selected>⚡ Auto-Detect (Indian English, English, Telugu, Hindi)</option>
+                                    <option value="en-IN">Indian English (en-IN)</option>
+                                    <option value="en-US">American English (en-US)</option>
+                                    <option value="te-IN">Telugu (తెలుగు - te-IN)</option>
+                                    <option value="hi-IN">Hindi (हिन्दी - hi-IN)</option>
+                                    <option value="ta-IN">Tamil (தமிழ் - ta-IN)</option>
+                                    <option value="kn-IN">Kannada (ಕನ್ನಡ - kn-IN)</option>
+                                    <option value="ml-IN">Malayalam (മലയാളം - ml-IN)</option>
+                                    <option value="bn-IN">Bengali (বাংলা - bn-IN)</option>
+                                    <option value="mr-IN">Marathi (मराठी - mr-IN)</option>
+                                    <option value="gu-IN">Gujarati (ગુજરાતી - gu-IN)</option>
+                                    <option value="pa-IN">Punjabi (ਪੰਜਾਬੀ - pa-IN)</option>
+                                    <option value="ur-IN">Urdu (اردو - ur-IN)</option>
+                                </select>
+                            </div>
+
+                            <!-- Target Language Dropdown -->
                             <div>
                                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                                     Select Target Language
@@ -369,14 +392,14 @@
                         <div class="text-xs text-slate-400 mb-2 font-medium flex items-center justify-between">
                             <span>Original Video</span>
                         </div>
-                        <video id="player-original" controls class="w-full rounded-lg bg-black aspect-video"></video>
+                        <video id="player-original" controls preload="metadata" class="w-full rounded-lg bg-black aspect-video"></video>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-indigo-500/40">
                         <div class="text-xs text-indigo-300 mb-2 font-medium flex items-center justify-between">
                             <span id="label-converted-preview">Converted Video with Translated Voice</span>
                             <span class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-900/50 text-indigo-300">Synchronized</span>
                         </div>
-                        <video id="player-converted" controls class="w-full rounded-lg bg-black aspect-video"></video>
+                        <video id="player-converted" controls preload="metadata" class="w-full rounded-lg bg-black aspect-video"></video>
                     </div>
                 </div>
             </div>

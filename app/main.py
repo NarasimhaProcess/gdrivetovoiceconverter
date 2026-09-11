@@ -350,6 +350,16 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
         else:
             raise ValueError("No video file provided.")
 
+        # Ensure faststart on input video so browser previews can stream and seek instantly without resets
+        fast_input = job_work_dir / f"fast_{Path(video_local_path).name}"
+        try:
+            cmd = ["ffmpeg", "-y", "-i", str(video_local_path), "-c", "copy", "-movflags", "+faststart", str(fast_input)]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            if fast_input.exists() and fast_input.stat().st_size > 0:
+                video_local_path = fast_input
+        except Exception as e:
+            logger.debug(f"Input faststart optimization note: {e}")
+
         jobs[job_id]["input_video_path"] = str(video_local_path)
 
         # Step 2: Convert voice & match video
@@ -362,6 +372,7 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
             duck_original_audio=duck_original_audio,
             background_volume=background_volume,
             custom_transcript=options.get("custom_script"),
+            source_lang=options.get("source_lang", "auto"),
             progress_callback=lambda pct, msg: update_job_progress(job_id, pct, msg)
         )
 
@@ -478,6 +489,7 @@ async def start_conversion(
     duck_original_audio: bool = Form(False),
     background_volume: float = Form(0.15),
     dest_folder_mode: str = Form("direct_download"),
+    source_lang: Optional[str] = Form("auto"),
     upload_file: Optional[UploadFile] = File(None)
 ):
     """Starts asynchronous conversion and returns job_id."""
@@ -536,6 +548,7 @@ async def start_conversion(
         "file_name": file_name,
         "parent_folder_id": parent_folder_id,
         "target_lang": target_lang,
+        "source_lang": source_lang or "auto",
         "voice_id": voice_id,
         "match_duration": match_duration,
         "duck_original_audio": duck_original_audio,
@@ -596,7 +609,7 @@ async def preview_original_video(job_id: str):
     p = jobs[job_id].get("input_video_path")
     if not p or not Path(p).exists():
         raise HTTPException(status_code=404, detail="Original video file not available")
-    return FileResponse(p, media_type="video/mp4")
+    return FileResponse(p, media_type="video/mp4", content_disposition_type="inline")
 
 
 @app.get("/api/preview/{job_id}/converted")
@@ -606,7 +619,7 @@ async def preview_converted_video(job_id: str):
     p = jobs[job_id].get("converted_video_path") or jobs[job_id].get("final_local_file")
     if not p or not Path(p).exists():
         raise HTTPException(status_code=404, detail="Converted video file not available")
-    return FileResponse(p, media_type="video/mp4")
+    return FileResponse(p, media_type="video/mp4", content_disposition_type="inline")
 
 
 @app.get("/api/download/{job_id}")

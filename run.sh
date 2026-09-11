@@ -10,7 +10,10 @@ if ! python3 -c "import fastapi, edge_tts, static_ffmpeg" 2>/dev/null; then
 fi
 
 # 2. Add static ffmpeg to PATH
-python3 -c "import static_ffmpeg; static_ffmpeg.add_paths()" 2>/dev/null || true
+FFMPEG_DIR=$(python3 -c "import static_ffmpeg, os, shutil; static_ffmpeg.add_paths(); print(os.path.dirname(shutil.which('ffmpeg') or ''))" 2>/dev/null || true)
+if [ -n "$FFMPEG_DIR" ]; then
+    export PATH="$FFMPEG_DIR:$PATH"
+fi
 
 PORT=${PORT:-8000}
 HOST=${HOST:-0.0.0.0}
