@@ -148,7 +148,9 @@ class GDriveManager:
             q=q,
             pageSize=100,
             fields="nextPageToken, files(id, name, mimeType, size, modifiedTime, webViewLink, thumbnailLink, parents, iconLink)",
-            orderBy="folder, name"
+            orderBy="folder, name",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
 
         items = results.get("files", [])
@@ -178,7 +180,7 @@ class GDriveManager:
         parent_id = None
         if folder_id:
             try:
-                meta = service.files().get(fileId=folder_id, fields="name, parents").execute()
+                meta = service.files().get(fileId=folder_id, fields="name, parents", supportsAllDrives=True).execute()
                 current_folder_name = meta.get("name", "Folder")
                 parent_parents = meta.get("parents", [])
                 if parent_parents:
@@ -199,7 +201,8 @@ class GDriveManager:
         service = self.get_service()
         return service.files().get(
             fileId=file_id,
-            fields="id, name, mimeType, size, modifiedTime, webViewLink, thumbnailLink, parents"
+            fields="id, name, mimeType, size, modifiedTime, webViewLink, thumbnailLink, parents",
+            supportsAllDrives=True
         ).execute()
 
     def download_file(self, file_id: str, dest_path: Path, progress_callback: Optional[Callable[[int, str], None]] = None) -> Path:
@@ -212,7 +215,7 @@ class GDriveManager:
         if progress_callback:
             progress_callback(5, "Requesting file stream from Google Drive...")
 
-        request = service.files().get_media(fileId=file_id)
+        request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
         with io.FileIO(str(dest_path), "wb") as fh:
             downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024 * 5) # 5MB chunks
             done = False
@@ -247,7 +250,9 @@ class GDriveManager:
         results = service.files().list(
             q=q,
             spaces="drive",
-            fields="files(id, name, webViewLink)"
+            fields="files(id, name, webViewLink)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
 
         files = results.get("files", [])
@@ -265,7 +270,8 @@ class GDriveManager:
 
         folder = service.files().create(
             body=folder_metadata,
-            fields="id, name, webViewLink"
+            fields="id, name, webViewLink",
+            supportsAllDrives=True
         ).execute()
         logger.info(f"Created new Drive folder: {folder}")
         return folder
@@ -282,7 +288,12 @@ class GDriveManager:
             file_metadata["parents"] = [folder_id]
 
         media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=True, chunksize=1024 * 1024 * 5)
-        request = service.files().create(body=file_metadata, media_body=media, fields="id, name, webViewLink, webContentLink, size")
+        request = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id, name, webViewLink, webContentLink, size",
+            supportsAllDrives=True
+        )
 
         if progress_callback:
             progress_callback(85, "Uploading converted video to Google Drive...")

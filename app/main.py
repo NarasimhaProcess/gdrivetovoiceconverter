@@ -215,6 +215,8 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
         drive_uploaded = False
         upload_response = {}
         folder_link = ""
+        drive_warning = None
+
         try:
             update_job_progress(job_id, 82, "Preparing Google Drive target language folder...")
             # Determine parent folder for target language folder
@@ -242,10 +244,19 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
             drive_uploaded = True
         except Exception as drive_err:
             logger.warning(f"Google Drive upload skipped or failed: {drive_err}")
-            if drive_file_id:
-                raise
+            err_str = str(drive_err)
+            if "storageQuota" in err_str or "storage quota" in err_str:
+                drive_warning = (
+                    "Google Drive limitation: Service Accounts have 0 MB personal storage quota and cannot upload files directly to personal @gmail.com accounts without a Google Workspace Shared Drive or OAuth. "
+                    "Your converted video is ready to download and watch below!"
+                )
+            else:
+                drive_warning = f"Drive upload notice: {drive_err}"
 
-        finish_msg = "Voice conversion and direct Drive export complete!" if drive_uploaded else "Voice conversion complete! (Connect Drive credentials to sync directly to Drive)"
+        if drive_uploaded:
+            finish_msg = "Voice conversion and direct Drive export complete!"
+        else:
+            finish_msg = "Voice conversion complete! Converted video ready to download below."
 
         update_job_progress(
             job_id,
@@ -256,6 +267,7 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
             drive_file_link=upload_response.get("webViewLink"),
             drive_folder_link=folder_link,
             drive_folder_name=lang_folder_name,
+            drive_warning=drive_warning,
             filename=out_filename
         )
 

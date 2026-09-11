@@ -312,9 +312,15 @@
                         <i data-lucide="check-circle-2" class="w-6 h-6"></i>
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-white">Voice Dubbing & Drive Export Complete!</h3>
-                        <p class="text-xs text-emerald-300/90">Your video has been converted and uploaded directly to your Google Drive folder.</p>
+                        <h3 id="completion-title" class="text-lg font-bold text-white">Voice Dubbing & Drive Export Complete!</h3>
+                        <p id="completion-subtitle" class="text-xs text-emerald-300/90">Your video has been converted and uploaded directly to your Google Drive folder.</p>
                     </div>
+                </div>
+
+                <!-- Drive Storage Quota / Notice Banner -->
+                <div id="drive-warning-alert" class="hidden mb-4 p-3.5 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-xs flex items-start space-x-2.5">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5"></i>
+                    <span id="drive-warning-text"></span>
                 </div>
 
                 <!-- Direct Drive Action Buttons -->

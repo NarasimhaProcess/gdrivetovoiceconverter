@@ -485,6 +485,23 @@ function showCompletion(data) {
     completionCard.classList.remove("hidden");
     completionCard.scrollIntoView({ behavior: "smooth" });
 
+    // Drive Warning / Storage Quota Notice
+    const warningEl = document.getElementById("drive-warning-alert");
+    const warningText = document.getElementById("drive-warning-text");
+    const titleEl = document.getElementById("completion-title");
+    const subtitleEl = document.getElementById("completion-subtitle");
+
+    if (data.drive_warning) {
+        warningEl.classList.remove("hidden");
+        warningText.textContent = data.drive_warning;
+        titleEl.textContent = "Voice Dubbing Complete! (Ready to Download)";
+        subtitleEl.textContent = "Your video has been converted with synchronized voice. See details below.";
+    } else {
+        warningEl.classList.add("hidden");
+        titleEl.textContent = "Voice Dubbing & Drive Export Complete!";
+        subtitleEl.textContent = "Your video has been converted and uploaded directly to your Google Drive folder.";
+    }
+
     // Buttons
     const btnFolder = document.getElementById("btn-open-drive-folder");
     const btnFile = document.getElementById("btn-open-drive-file");
