@@ -8,10 +8,13 @@ import os
 import json
 import uuid
 import shutil
+import zipfile
 import asyncio
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
+
+import py7zr
 
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
@@ -19,8 +22,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+except Exception:
+    pass
+
 from app.config import (
     BASE_DIR, STORAGE_DIR, TEMP_DIR, OUTPUT_DIR,
+    MAX_UPLOAD_SIZE_BYTES, MAX_UPLOAD_SIZE_MB, MAX_UPLOAD_SIZE_GB,
     load_gdrive_credentials, save_gdrive_credentials
 )
 from app.languages import LANGUAGES, get_languages_list, get_language_folder_name
@@ -68,6 +78,15 @@ async def get_status():
             "type": None,
             "email": None
         }
+
+@app.get("/api/config")
+async def get_app_config():
+    """Returns application configuration including max file size limits."""
+    return {
+        "max_upload_size_bytes": MAX_UPLOAD_SIZE_BYTES,
+        "max_upload_size_mb": MAX_UPLOAD_SIZE_MB,
+        "max_upload_size_gb": MAX_UPLOAD_SIZE_GB
+    }
 
 @app.post("/api/credentials")
 async def update_credentials(
@@ -118,6 +137,156 @@ async def list_drive_files(folder_id: Optional[str] = None, q: Optional[str] = N
         logger.error(f"Error listing Drive files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/drive/download/{file_id}")
+async def download_drive_file(file_id: str):
+    """Directly download a file from Google Drive to the browser without needing to open Google Drive."""
+    manager = get_drive_manager()
+    try:
+        meta = manager.get_file_metadata(file_id)
+        file_name = meta.get("name", f"video_{file_id}.mp4")
+        mime_type = meta.get("mimeType", "video/mp4")
+        temp_file = TEMP_DIR / "downloads" / f"{file_id}_{file_name}"
+        temp_file.parent.mkdir(parents=True, exist_ok=True)
+        if not temp_file.exists() or temp_file.stat().st_size == 0:
+            manager.download_file(file_id, temp_file)
+        return FileResponse(
+            temp_file,
+            media_type=mime_type,
+            filename=file_name
+        )
+    except Exception as e:
+        logger.error(f"Error directly downloading Drive file {file_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".webm", ".avi", ".flv", ".wmv", ".m4v"}
+ARCHIVE_EXTENSIONS = {".zip", ".7z"}
+
+def extract_archive(archive_path: Path, extract_dir: Path) -> Tuple[Path, Optional[str]]:
+    """
+    Safely extracts a .zip or .7z archive.
+    Returns (primary_video_path, optional_custom_script_text).
+    """
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    ext = archive_path.suffix.lower()
+
+    if ext == ".zip":
+        with zipfile.ZipFile(archive_path, 'r') as zf:
+            for member in zf.infolist():
+                dest = (extract_dir / member.filename).resolve()
+                if not str(dest).startswith(str(extract_dir.resolve())):
+                    raise HTTPException(status_code=400, detail="Invalid archive: path traversal detected.")
+            zf.extractall(extract_dir)
+    elif ext == ".7z":
+        with py7zr.SevenZipFile(archive_path, mode='r') as z:
+            z.extractall(extract_dir)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported archive format: {ext}")
+
+    video_files = []
+    for p in extract_dir.rglob("*"):
+        if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS:
+            video_files.append(p)
+
+    if not video_files:
+        raise HTTPException(
+            status_code=400,
+            detail="No supported video files (.mp4, .mkv, .mov, .webm, .avi) found inside the archive."
+        )
+
+    # Pick largest video file as the primary video
+    video_files.sort(key=lambda f: f.stat().st_size, reverse=True)
+    primary_video = video_files[0]
+
+    # Check for custom transcript or script text file
+    custom_script = None
+    for p in extract_dir.rglob("*.txt"):
+        if p.is_file() and ("transcript" in p.name.lower() or "script" in p.name.lower()):
+            try:
+                custom_script = p.read_text(encoding="utf-8", errors="ignore").strip()
+                logger.info(f"Loaded custom script from archive: {p.name}")
+                break
+            except Exception:
+                pass
+
+    return primary_video, custom_script
+
+
+def create_dubbing_package(job_id: str, fmt: str = "zip") -> Path:
+    """
+    Creates a ZIP or 7-Zip package containing:
+    - Converted MP4 video
+    - Isolated Neural Voiceover Track (MP3/WAV)
+    - Original & Translated Transcripts (.txt)
+    """
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[job_id]
+    converted_video = job.get("final_local_file") or job.get("converted_video_path")
+    if not converted_video or not Path(converted_video).exists():
+        raise HTTPException(status_code=404, detail="Converted video file not found")
+
+    target_lang = job.get("target_lang", "hi")
+    lang_name = LANGUAGES.get(target_lang, {}).get("name", target_lang)
+    final_filename = job.get("final_filename", "converted_video.mp4")
+    stem = Path(final_filename).stem
+
+    package_dir = TEMP_DIR / job_id / "package"
+    package_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Video
+    pkg_video = package_dir / Path(converted_video).name
+    if not pkg_video.exists():
+        shutil.copy2(converted_video, pkg_video)
+
+    # 2. Voice audio
+    voice_path = job.get("final_voice_file") or job.get("voice_audio_path")
+    if voice_path and Path(voice_path).exists():
+        voice_ext = Path(voice_path).suffix or ".mp3"
+        pkg_audio = package_dir / f"{stem}_voiceover{voice_ext}"
+        if not pkg_audio.exists():
+            shutil.copy2(voice_path, pkg_audio)
+
+    # 3. Transcripts
+    orig_text = job.get("original_transcript", "")
+    trans_text = job.get("translated_transcript", "")
+    pkg_transcript = package_dir / f"{stem}_transcripts.txt"
+    pkg_transcript.write_text(
+        f"===========================================================\n"
+        f"  DriveVoice AI - Video Dubbing Kit\n"
+        f"  File: {final_filename}\n"
+        f"  Target Language: {lang_name} ({target_lang})\n"
+        f"===========================================================\n\n"
+        f"--- ORIGINAL DETECTED SPEECH ---\n"
+        f"{orig_text}\n\n"
+        f"--- TRANSLATED & DUBBED SPEECH ({lang_name}) ---\n"
+        f"{trans_text}\n",
+        encoding="utf-8"
+    )
+
+    # 4. Generate Archive
+    if fmt == "zip":
+        archive_path = OUTPUT_DIR / f"{job_id}_{stem}_dubbing_package.zip"
+        if not archive_path.exists() or archive_path.stat().st_size == 0:
+            with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                for item in package_dir.iterdir():
+                    if item.is_file():
+                        zf.write(item, arcname=item.name)
+        return archive_path
+
+    elif fmt == "7z":
+        archive_path = OUTPUT_DIR / f"{job_id}_{stem}_dubbing_package.7z"
+        if not archive_path.exists() or archive_path.stat().st_size == 0:
+            with py7zr.SevenZipFile(archive_path, mode='w') as z:
+                for item in package_dir.iterdir():
+                    if item.is_file():
+                        z.write(item, arcname=item.name)
+        return archive_path
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {fmt}")
+
+
 def update_job_progress(job_id: str, progress: int, message: str, **kwargs):
     if job_id in jobs:
         jobs[job_id]["progress"] = progress
@@ -127,6 +296,7 @@ def update_job_progress(job_id: str, progress: int, message: str, **kwargs):
         # Notify SSE queue
         if job_id in job_events:
             event_data = {
+                "job_id": job_id,
                 "progress": progress,
                 "message": message,
                 **{k: v for k, v in kwargs.items() if isinstance(v, (str, int, float, bool, dict, list))}
@@ -191,11 +361,14 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
             match_duration=match_duration,
             duck_original_audio=duck_original_audio,
             background_volume=background_volume,
+            custom_transcript=options.get("custom_script"),
             progress_callback=lambda pct, msg: update_job_progress(job_id, pct, msg)
         )
 
         output_video_path = conv_result["output_video_path"]
+        voice_audio_path = conv_result.get("voice_audio_path")
         jobs[job_id]["converted_video_path"] = str(output_video_path)
+        jobs[job_id]["voice_audio_path"] = str(voice_audio_path) if voice_audio_path else ""
         jobs[job_id]["original_transcript"] = conv_result["original_transcript"]
         jobs[job_id]["translated_transcript"] = conv_result["translated_transcript"]
 
@@ -211,65 +384,82 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
         jobs[job_id]["final_local_file"] = str(final_local_file)
         jobs[job_id]["final_filename"] = out_filename
 
-        # Step 4: Google Drive Upload directly to Language Folder
-        drive_uploaded = False
-        upload_response = {}
-        folder_link = ""
-        drive_warning = None
+        if voice_audio_path and Path(voice_audio_path).exists():
+            final_voice_file = OUTPUT_DIR / f"{job_id}_{base_name}_voiceover_{lang_folder_name}{Path(voice_audio_path).suffix}"
+            shutil.copy2(voice_audio_path, final_voice_file)
+            jobs[job_id]["final_voice_file"] = str(final_voice_file)
 
-        try:
-            update_job_progress(job_id, 82, "Preparing Google Drive target language folder...")
-            # Determine parent folder for target language folder
-            target_parent = parent_folder_id if (dest_folder_mode == "same_as_source" and parent_folder_id) else None
-
-            # Create or find language folder in Google Drive
-            drive_lang_folder = manager.get_or_create_language_folder(
-                language_folder_name=lang_folder_name,
-                parent_folder_id=target_parent
+        # Step 4: Google Drive Upload directly to Language Folder or Direct Download
+        if dest_folder_mode == "direct_download":
+            logger.info(f"Direct download selected for job {job_id}. Skipping Google Drive upload.")
+            update_job_progress(
+                job_id,
+                100,
+                "Voice conversion complete! Converted video is ready for direct download.",
+                status="completed",
+                dest_folder_mode="direct_download",
+                filename=out_filename
             )
-            folder_id = drive_lang_folder.get("id")
-            folder_link = drive_lang_folder.get("webViewLink", "")
-            jobs[job_id]["drive_folder_id"] = folder_id
-            jobs[job_id]["drive_folder_name"] = lang_folder_name
-            jobs[job_id]["drive_folder_link"] = folder_link
-
-            # Upload file to the language folder
-            upload_response = manager.upload_file(
-                local_path=output_video_path,
-                filename=out_filename,
-                folder_id=folder_id,
-                mime_type="video/mp4",
-                progress_callback=lambda pct, msg: update_job_progress(job_id, pct, msg)
-            )
-            drive_uploaded = True
-        except Exception as drive_err:
-            logger.warning(f"Google Drive upload skipped or failed: {drive_err}")
-            err_str = str(drive_err)
-            if "storageQuota" in err_str or "storage quota" in err_str:
-                drive_warning = (
-                    "Google Drive limitation: Service Accounts have 0 MB personal storage quota and cannot upload files directly to personal @gmail.com accounts without a Google Workspace Shared Drive or OAuth. "
-                    "Your converted video is ready to download and watch below!"
-                )
-            else:
-                drive_warning = f"Drive upload notice: {drive_err}"
-
-        if drive_uploaded:
-            finish_msg = "Voice conversion and direct Drive export complete!"
         else:
-            finish_msg = "Voice conversion complete! Converted video ready to download below."
+            drive_uploaded = False
+            upload_response = {}
+            folder_link = ""
+            drive_warning = None
 
-        update_job_progress(
-            job_id,
-            100,
-            finish_msg,
-            status="completed",
-            drive_file_id=upload_response.get("id"),
-            drive_file_link=upload_response.get("webViewLink"),
-            drive_folder_link=folder_link,
-            drive_folder_name=lang_folder_name,
-            drive_warning=drive_warning,
-            filename=out_filename
-        )
+            try:
+                update_job_progress(job_id, 82, "Preparing Google Drive target language folder...")
+                # Determine parent folder for target language folder
+                target_parent = parent_folder_id if (dest_folder_mode == "same_as_source" and parent_folder_id) else None
+
+                # Create or find language folder in Google Drive
+                drive_lang_folder = manager.get_or_create_language_folder(
+                    language_folder_name=lang_folder_name,
+                    parent_folder_id=target_parent
+                )
+                folder_id = drive_lang_folder.get("id")
+                folder_link = drive_lang_folder.get("webViewLink", "")
+                jobs[job_id]["drive_folder_id"] = folder_id
+                jobs[job_id]["drive_folder_name"] = lang_folder_name
+                jobs[job_id]["drive_folder_link"] = folder_link
+
+                # Upload file to the language folder
+                upload_response = manager.upload_file(
+                    local_path=output_video_path,
+                    filename=out_filename,
+                    folder_id=folder_id,
+                    mime_type="video/mp4",
+                    progress_callback=lambda pct, msg: update_job_progress(job_id, pct, msg)
+                )
+                drive_uploaded = True
+            except Exception as drive_err:
+                logger.warning(f"Google Drive upload skipped or failed: {drive_err}")
+                err_str = str(drive_err)
+                if "storageQuota" in err_str or "storage quota" in err_str:
+                    drive_warning = (
+                        "Google Drive limitation: Service Accounts have 0 MB personal storage quota and cannot upload files directly to personal @gmail.com accounts without a Google Workspace Shared Drive or OAuth. "
+                        "Your converted video is ready to download and watch below!"
+                    )
+                else:
+                    drive_warning = f"Drive upload notice: {drive_err}"
+
+            if drive_uploaded:
+                finish_msg = "Voice conversion and direct Drive export complete!"
+            else:
+                finish_msg = "Voice conversion complete! Converted video ready to download below."
+
+            update_job_progress(
+                job_id,
+                100,
+                finish_msg,
+                status="completed",
+                drive_file_id=upload_response.get("id"),
+                drive_file_link=upload_response.get("webViewLink"),
+                drive_folder_link=folder_link,
+                drive_folder_name=lang_folder_name,
+                drive_warning=drive_warning,
+                dest_folder_mode=dest_folder_mode,
+                filename=out_filename
+            )
 
     except Exception as e:
         logger.exception(f"Job {job_id} failed: {e}")
@@ -287,20 +477,44 @@ async def start_conversion(
     match_duration: bool = Form(True),
     duck_original_audio: bool = Form(False),
     background_volume: float = Form(0.15),
-    dest_folder_mode: str = Form("same_as_source"),
+    dest_folder_mode: str = Form("direct_download"),
     upload_file: Optional[UploadFile] = File(None)
 ):
     """Starts asynchronous conversion and returns job_id."""
     job_id = str(uuid.uuid4())[:8]
     local_video_path = None
 
+    custom_script = None
     if upload_file and upload_file.filename:
-        file_name = upload_file.filename
+        raw_name = upload_file.filename
         job_temp = TEMP_DIR / job_id
         job_temp.mkdir(parents=True, exist_ok=True)
-        local_video_path = job_temp / file_name
-        with open(local_video_path, "wb") as buffer:
-            shutil.copyfileobj(upload_file.file, buffer)
+        uploaded_path = job_temp / raw_name
+        
+        # Stream file in 1MB chunks to disk without loading entire 2GB file into memory
+        bytes_written = 0
+        CHUNK_SIZE = 1024 * 1024  # 1 MB chunk
+        with open(uploaded_path, "wb") as buffer:
+            while chunk := await upload_file.read(CHUNK_SIZE):
+                bytes_written += len(chunk)
+                if bytes_written > MAX_UPLOAD_SIZE_BYTES:
+                    buffer.close()
+                    uploaded_path.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Uploaded file exceeds maximum allowed size of {MAX_UPLOAD_SIZE_GB:.1f} GB ({MAX_UPLOAD_SIZE_MB} MB)."
+                    )
+                buffer.write(chunk)
+
+        # Automatically extract .zip or .7z archives
+        if uploaded_path.suffix.lower() in ARCHIVE_EXTENSIONS:
+            unpacked_dir = job_temp / "unpacked"
+            local_video_path, custom_script = extract_archive(uploaded_path, unpacked_dir)
+            file_name = local_video_path.name
+            logger.info(f"Unpacked {raw_name} -> found primary video {file_name}")
+        else:
+            local_video_path = uploaded_path
+            file_name = raw_name
 
     if not drive_file_id and not local_video_path:
         raise HTTPException(status_code=400, detail="Please select a video from Google Drive or upload a video file.")
@@ -326,7 +540,8 @@ async def start_conversion(
         "match_duration": match_duration,
         "duck_original_audio": duck_original_audio,
         "background_volume": background_volume,
-        "dest_folder_mode": dest_folder_mode
+        "dest_folder_mode": dest_folder_mode,
+        "custom_script": custom_script
     }
 
     background_tasks.add_task(process_conversion_task, job_id, options)
@@ -403,3 +618,23 @@ async def download_converted_file(job_id: str):
         raise HTTPException(status_code=404, detail="Output file not found")
     filename = jobs[job_id].get("final_filename", "converted_video.mp4")
     return FileResponse(p, media_type="video/mp4", filename=filename)
+
+
+@app.get("/api/download/{job_id}/zip")
+async def download_package_zip(job_id: str):
+    """Downloads the complete dubbing package (video, voice audio, transcripts) as a ZIP archive."""
+    archive_path = create_dubbing_package(job_id, fmt="zip")
+    filename = archive_path.name
+    if "_" in filename:
+        filename = filename.split("_", 1)[1]
+    return FileResponse(archive_path, media_type="application/zip", filename=filename)
+
+
+@app.get("/api/download/{job_id}/7z")
+async def download_package_7z(job_id: str):
+    """Downloads the complete dubbing package as a 7-Zip (.7z) archive."""
+    archive_path = create_dubbing_package(job_id, fmt="7z")
+    filename = archive_path.name
+    if "_" in filename:
+        filename = filename.split("_", 1)[1]
+    return FileResponse(archive_path, media_type="application/x-7z-compressed", filename=filename)

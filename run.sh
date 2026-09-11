@@ -23,4 +23,4 @@ if [ -n "$CODESPACE_NAME" ]; then
 fi
 echo "======================================================="
 
-exec uvicorn app.main:app --host "$HOST" --port "$PORT" --reload
+exec uvicorn app.main:app --host "$HOST" --port "$PORT" --reload --timeout-keep-alive 75

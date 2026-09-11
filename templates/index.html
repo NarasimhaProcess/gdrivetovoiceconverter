@@ -126,12 +126,12 @@
                     <!-- TAB 2: Local Video Upload -->
                     <div id="upload-tab-content" class="hidden">
                         <div id="drop-zone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-8 text-center transition cursor-pointer bg-slate-950/40" onclick="document.getElementById('local-video-input').click()">
-                            <input type="file" id="local-video-input" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,video/avi" class="hidden" onchange="handleLocalFileSelect(this)">
+                            <input type="file" id="local-video-input" accept="video/mp4,video/x-matroska,video/quicktime,video/webm,video/avi,.zip,.7z,application/zip,application/x-7z-compressed" class="hidden" onchange="handleLocalFileSelect(this)">
                             <div class="w-12 h-12 rounded-full bg-indigo-900/30 text-indigo-400 mx-auto flex items-center justify-center mb-3">
                                 <i data-lucide="video" class="w-6 h-6"></i>
                             </div>
-                            <p class="text-sm font-medium text-slate-200">Click or drag a video file here</p>
-                            <p class="text-xs text-slate-500 mt-1">Supports MP4, MKV, MOV, WebM, AVI (up to 500MB)</p>
+                            <p class="text-sm font-medium text-slate-200">Click or drag a video or archive file here</p>
+                            <p class="text-xs text-slate-500 mt-1">Supports MP4, MKV, MOV, WebM, AVI, ZIP, 7Z (up to 2 GB)</p>
                         </div>
                     </div>
 
@@ -212,23 +212,36 @@
                                 </div>
                             </div>
 
-                            <!-- Google Drive Folder Storage Choice -->
+                            <!-- Export & Storage Destination Choice -->
                             <div>
                                 <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                    Google Drive Storage Destination
+                                    Export & Download Destination
                                 </label>
                                 <div class="space-y-2">
-                                    <label class="flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition">
-                                        <input type="radio" name="folder_mode" value="same_as_source" checked class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700">
+                                    <!-- Option 1: Direct Download (Default) -->
+                                    <label id="mode-direct-container" class="flex items-start space-x-2.5 p-3 rounded-xl border border-indigo-500/60 bg-indigo-950/40 cursor-pointer transition">
+                                        <input type="radio" name="folder_mode" value="direct_download" id="folder-mode-direct" checked class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700" onchange="onFolderModeChange()">
                                         <div class="text-xs">
-                                            <span class="font-medium text-slate-200">Save in &lt;Language&gt; folder alongside source video</span>
+                                            <div class="flex items-center space-x-1.5">
+                                                <span class="font-semibold text-white">⚡ Direct Download Only</span>
+                                                <span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 font-medium border border-indigo-500/30">Recommended &bull; Fast</span>
+                                            </div>
+                                            <p class="text-slate-300 text-[11px] mt-0.5">Download converted MP4 directly to your device. Completely skips Google Drive upload (avoids quota issues).</p>
+                                        </div>
+                                    </label>
+                                    <!-- Option 2: Save alongside source in Drive -->
+                                    <label id="mode-source-container" class="flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition">
+                                        <input type="radio" name="folder_mode" value="same_as_source" id="folder-mode-source" class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700" onchange="onFolderModeChange()">
+                                        <div class="text-xs">
+                                            <span class="font-medium text-slate-200">Save in &lt;Language&gt; folder alongside source video in Drive</span>
                                             <p class="text-slate-500 text-[11px] mt-0.5">Creates folder e.g. <span class="font-mono text-indigo-300">Hindi/</span> inside source folder</p>
                                         </div>
                                     </label>
-                                    <label class="flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition">
-                                        <input type="radio" name="folder_mode" value="root" class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700">
+                                    <!-- Option 3: Save in Drive root -->
+                                    <label id="mode-root-container" class="flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition">
+                                        <input type="radio" name="folder_mode" value="root" id="folder-mode-root" class="mt-0.5 text-indigo-600 focus:ring-indigo-500 bg-slate-900 border-slate-700" onchange="onFolderModeChange()">
                                         <div class="text-xs">
-                                            <span class="font-medium text-slate-200">Save in root &lt;Language&gt; folder</span>
+                                            <span class="font-medium text-slate-200">Save in root &lt;Language&gt; folder in Drive</span>
                                             <p class="text-slate-500 text-[11px] mt-0.5">Creates folder e.g. <span class="font-mono text-indigo-300">Drive / Hindi/</span></p>
                                         </div>
                                     </label>
@@ -240,8 +253,8 @@
                     <!-- Convert Action Button -->
                     <div class="pt-6">
                         <button id="start-convert-btn" onclick="startConversion()" disabled class="w-full py-3.5 px-4 rounded-xl font-semibold text-sm shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white">
-                            <i data-lucide="sparkles" class="w-4 h-4"></i>
-                            <span>Convert Voice & Save Directly to Drive</span>
+                            <i id="convert-btn-icon" data-lucide="download" class="w-4 h-4"></i>
+                            <span id="convert-btn-text">Convert Voice & Direct Download</span>
                         </button>
                     </div>
                 </div>
@@ -286,8 +299,8 @@
                     <span>3. Voice Match & Remux</span>
                 </div>
                 <div id="step-upload" class="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2">
-                    <i data-lucide="cloud-upload" class="w-4 h-4"></i>
-                    <span>4. Save to Drive Folder</span>
+                    <i id="step-upload-icon" data-lucide="download" class="w-4 h-4"></i>
+                    <span id="step-upload-label">4. Direct Download Ready</span>
                 </div>
             </div>
 
@@ -312,8 +325,8 @@
                         <i data-lucide="check-circle-2" class="w-6 h-6"></i>
                     </div>
                     <div>
-                        <h3 id="completion-title" class="text-lg font-bold text-white">Voice Dubbing & Drive Export Complete!</h3>
-                        <p id="completion-subtitle" class="text-xs text-emerald-300/90">Your video has been converted and uploaded directly to your Google Drive folder.</p>
+                        <h3 id="completion-title" class="text-lg font-bold text-white">Voice Dubbing Complete!</h3>
+                        <p id="completion-subtitle" class="text-xs text-emerald-300/90">Your video has been converted with synchronized voice and is ready to download.</p>
                     </div>
                 </div>
 
@@ -323,19 +336,27 @@
                     <span id="drive-warning-text"></span>
                 </div>
 
-                <!-- Direct Drive Action Buttons -->
+                <!-- Action Buttons: Direct Download + ZIP/7Z Bundles + Drive Links -->
                 <div class="flex flex-wrap items-center gap-2.5">
-                    <a id="btn-open-drive-folder" href="#" target="_blank" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition flex items-center space-x-1.5">
+                    <a id="btn-download-local" href="#" class="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-600/30 ring-1 ring-indigo-400/50 transition flex items-center space-x-2">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Download MP4</span>
+                    </a>
+                    <a id="btn-download-zip" href="#" class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition flex items-center space-x-1.5" title="Download Dubbing Kit: Converted MP4 + Voiceover Track + Transcripts">
+                        <i data-lucide="archive" class="w-4 h-4 text-amber-400"></i>
+                        <span>Download Kit (.zip)</span>
+                    </a>
+                    <a id="btn-download-7z" href="#" class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition flex items-center space-x-1.5" title="Download Ultra-Compressed 7-Zip Kit">
+                        <i data-lucide="archive" class="w-4 h-4 text-emerald-400"></i>
+                        <span>Download (.7z)</span>
+                    </a>
+                    <a id="btn-open-drive-folder" href="#" target="_blank" class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center space-x-1.5">
                         <i data-lucide="folder" class="w-4 h-4"></i>
                         <span id="label-open-folder">Open Language Folder in Drive</span>
                     </a>
-                    <a id="btn-open-drive-file" href="#" target="_blank" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center space-x-1.5">
+                    <a id="btn-open-drive-file" href="#" target="_blank" class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center space-x-1.5">
                         <i data-lucide="external-link" class="w-4 h-4"></i>
                         <span>Open Video in Drive</span>
-                    </a>
-                    <a id="btn-download-local" href="#" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition flex items-center space-x-1.5">
-                        <i data-lucide="download" class="w-4 h-4"></i>
-                        <span>Download MP4</span>
                     </a>
                 </div>
             </div>

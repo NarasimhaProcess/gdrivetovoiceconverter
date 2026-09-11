@@ -323,6 +323,7 @@ class VideoVoiceConverter:
 
         return {
             "output_video_path": output_video_path,
+            "voice_audio_path": final_voice_audio,
             "original_transcript": transcript,
             "translated_transcript": translated_text,
             "video_duration": video_duration,

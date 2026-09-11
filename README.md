@@ -7,11 +7,14 @@ It extracts audio from video files stored in Google Drive (or local upload), tra
 
 ## 🌟 Key Features
 
-- **Direct Google Drive Integration**:
-  - Connects using `GDRIVE_CREDENTIALS` (GitHub Secret, Codespaces environment variable, or `credentials.json`).
-  - Interactive Drive Explorer: browse folders, preview video files, and search.
-  - Automatic language folder creation on Google Drive (e.g., `Hindi/`, `Telugu/`, `Tamil/`, `Professional_English_Indian/`).
-  - Chunked resumable upload directly back to Google Drive with direct web links to view the file and folder.
+- **Direct Download & Google Drive Export Options**:
+  - **⚡ Direct Download Only**: Convert videos and download MP4s directly to your device without requiring Google Drive uploads or permissions (bypasses Service Account 0 MB personal quota restrictions).
+  - **Drive File Explorer Direct Download**: Download any video directly from your Google Drive files list with 1-click without opening the Drive website.
+  - **Direct Google Drive Integration**:
+    - Connects using `GDRIVE_CREDENTIALS` (GitHub Secret, Codespaces environment variable, or `credentials.json`).
+    - Interactive Drive Explorer: browse folders, preview video files, and search.
+    - Automatic language folder creation on Google Drive (e.g., `Hindi/`, `Telugu/`, `Tamil/`, `Professional_English_Indian/`).
+    - Chunked resumable upload directly back to Google Drive with direct web links to view the file and folder.
 - **Indian Languages & Professional English Support**:
   - **Indian Languages**: Hindi (हिन्दी), Telugu (తెలుగు), Tamil (தமிழ்), Kannada (ಕನ್ನಡ), Malayalam (മലയാളം), Bengali (বাংলা), Marathi (मराठी), Gujarati (ગુજરાતી), Punjabi (ਪੰਜਾਬੀ), Urdu (اردو).
   - **Professional English**: Indian Accent (Neerja / Prabhat), US Accent (Jenny / Guy / Aria / Christopher), British UK Accent (Sonia / Ryan).
@@ -21,7 +24,7 @@ It extracts audio from video files stored in Google Drive (or local upload), tra
 - **Real-Time Interactive UI**:
   - Live progress tracking via Server-Sent Events (SSE) with step-by-step pipeline indicators.
   - Live side-by-side video preview players (Original Video vs Converted Video).
-  - Download converted MP4 locally or open directly in Google Drive.
+  - Download converted MP4 directly or open in Google Drive.
 
 ---
 
@@ -102,6 +105,22 @@ Inside GitHub Codespaces terminal:
 gh codespace ports visibility 8000:public -c "$CODESPACE_NAME"
 ```
 Or right-click Port **8000** in the **Ports** tab and choose **Port Visibility ➔ Public**.
+
+---
+
+## 📦 Large File Upload & Download Configuration (Up to 2 GB)
+
+The studio is pre-configured to process files up to **2 GB** out of the box:
+- **Streaming Upload**: Videos are streamed directly to disk in 1 MB chunks, preventing memory overflow.
+- **Real-Time Progress**: The UI shows live byte-level upload progress (`MB transferred / Total MB`).
+- **High-Speed Drive Transfer**: Google Drive download and upload chunk sizes are set to 32 MB.
+- **Zero Video Re-encoding Loss**: FFmpeg remuxes converted audio via `-c:v copy` in seconds.
+
+To customize the limit, set the `MAX_UPLOAD_SIZE_GB` environment variable:
+```bash
+export MAX_UPLOAD_SIZE_GB=4.0   # Increase to 4 GB
+./run.sh
+```
 
 ---
 

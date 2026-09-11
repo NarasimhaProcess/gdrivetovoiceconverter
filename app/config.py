@@ -16,6 +16,12 @@ OUTPUT_DIR = STORAGE_DIR / "output"
 for d in [STORAGE_DIR, TEMP_DIR, OUTPUT_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
+# Maximum file size configuration (default: 2 GB, configurable via env vars)
+DEFAULT_MAX_GB = float(os.environ.get("MAX_UPLOAD_SIZE_GB", "2.0"))
+MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_BYTES", int(DEFAULT_MAX_GB * 1024 * 1024 * 1024)))
+MAX_UPLOAD_SIZE_MB = MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)
+MAX_UPLOAD_SIZE_GB = MAX_UPLOAD_SIZE_BYTES / (1024 * 1024 * 1024)
+
 CREDENTIAL_CANDIDATES = [
     WORKSPACE_DIR / "credentials.json",
     WORKSPACE_DIR / "gdrive_credentials.json",

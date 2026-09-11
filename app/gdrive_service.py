@@ -217,7 +217,7 @@ class GDriveManager:
 
         request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
         with io.FileIO(str(dest_path), "wb") as fh:
-            downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024 * 5) # 5MB chunks
+            downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024 * 32) # 32MB chunks for fast 2GB downloads
             done = False
             while not done:
                 status, done = downloader.next_chunk()
@@ -287,7 +287,7 @@ class GDriveManager:
         if folder_id:
             file_metadata["parents"] = [folder_id]
 
-        media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=True, chunksize=1024 * 1024 * 5)
+        media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=True, chunksize=1024 * 1024 * 32) # 32MB chunks for fast 2GB uploads
         request = service.files().create(
             body=file_metadata,
             media_body=media,

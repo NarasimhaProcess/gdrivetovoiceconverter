@@ -5,11 +5,26 @@ let selectedVideo = null; // { type: 'drive'|'local', id, name, size, parentId, 
 let languagesData = [];
 let activeJobId = null;
 let eventSource = null;
+let maxUploadSizeBytes = 2 * 1024 * 1024 * 1024; // 2 GB default
 
 document.addEventListener("DOMContentLoaded", () => {
+    loadConfig();
     checkDriveStatus();
     loadLanguages();
+    onFolderModeChange();
 });
+
+async function loadConfig() {
+    try {
+        const resp = await fetch("/api/config");
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.max_upload_size_bytes) {
+                maxUploadSizeBytes = data.max_upload_size_bytes;
+            }
+        }
+    } catch (_) {}
+}
 
 // 1. Google Drive Status & Connection
 async function checkDriveStatus() {
@@ -41,21 +56,30 @@ async function checkDriveStatus() {
             container.className = "flex items-center px-3 py-1.5 rounded-full text-xs font-medium border border-amber-500/40 bg-amber-950/40 text-amber-300 cursor-pointer";
             container.innerHTML = `
                 <span class="w-2 h-2 rounded-full bg-amber-400 mr-2"></span>
-                <span>Drive Not Connected (Click to Setup)</span>
+                <span>Drive Optional (Click to Setup)</span>
             `;
             container.onclick = openCredentialsModal;
 
             document.getElementById("drive-files-container").innerHTML = `
                 <div class="p-8 text-center space-y-3">
-                    <div class="w-10 h-10 rounded-full bg-amber-950/60 text-amber-400 mx-auto flex items-center justify-center">
-                        <i data-lucide="key" class="w-5 h-5"></i>
+                    <div class="w-10 h-10 rounded-full bg-slate-800 text-indigo-400 mx-auto flex items-center justify-center">
+                        <i data-lucide="cloud-off" class="w-5 h-5"></i>
                     </div>
-                    <p class="text-xs text-slate-300">Google Drive credentials not detected.</p>
-                    <button onclick="openCredentialsModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-xl shadow transition">
-                        Connect Google Drive (Upload / Paste Credentials)
-                    </button>
+                    <p class="text-xs font-medium text-slate-200">Google Drive is optional and not connected</p>
+                    <p class="text-[11px] text-slate-400 max-w-sm mx-auto">You can use <strong>Direct Video Dubbing & Download</strong> without Google Drive by uploading your video directly!</p>
+                    <div class="flex items-center justify-center gap-2 pt-2">
+                        <button onclick="switchSourceTab('upload')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-xl shadow transition flex items-center space-x-1.5">
+                            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                            <span>Use Local Video Upload</span>
+                        </button>
+                        <button onclick="openCredentialsModal()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl border border-slate-700 transition">
+                            Setup Drive
+                        </button>
+                    </div>
                 </div>
             `;
+            // If Drive is not connected, default to local upload tab
+            switchSourceTab('upload');
             lucide.createIcons();
         }
     } catch (err) {
@@ -234,13 +258,14 @@ function renderDriveList(folders, videos) {
     });
 
     // Render Video Files
+    currentVideos = videos;
     videos.forEach(video => {
         const item = document.createElement("div");
         const isSelected = selectedVideo && selectedVideo.id === video.id;
         item.className = `flex items-center justify-between p-3 hover:bg-slate-900/80 transition cursor-pointer group ${isSelected ? 'bg-indigo-950/40 border-l-2 border-indigo-500' : ''}`;
         
         item.innerHTML = `
-            <div class="flex items-center space-x-3 overflow-hidden">
+            <div class="flex items-center space-x-3 overflow-hidden flex-1" onclick="selectDriveVideoById('${video.id}')">
                 <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center flex-shrink-0">
                     <i data-lucide="film" class="w-4 h-4"></i>
                 </div>
@@ -249,15 +274,27 @@ function renderDriveList(folders, videos) {
                     <span class="text-[10px] text-slate-500">${formatBytes(video.size)}</span>
                 </div>
             </div>
-            <button class="px-3 py-1 rounded-lg text-xs font-medium transition ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-300'}">
-                ${isSelected ? 'Selected' : 'Select'}
-            </button>
+            <div class="flex items-center space-x-2 flex-shrink-0 ml-3">
+                <a href="/api/drive/download/${video.id}" download="${video.name}" onclick="event.stopPropagation()" class="px-2.5 py-1.5 rounded-lg text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white transition flex items-center space-x-1 text-xs border border-slate-700" title="Download video file directly without opening Google Drive">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span class="hidden sm:inline text-[11px] font-medium">Download</span>
+                </a>
+                <button onclick="selectDriveVideoById('${video.id}'); event.stopPropagation();" class="px-3 py-1.5 rounded-lg text-xs font-medium transition ${isSelected ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-300'}">
+                    ${isSelected ? 'Selected' : 'Select'}
+                </button>
+            </div>
         `;
-        item.onclick = () => selectDriveVideo(video);
         container.appendChild(item);
     });
 
     lucide.createIcons();
+}
+
+function selectDriveVideoById(videoId) {
+    const video = (currentVideos || []).find(v => v.id === videoId);
+    if (video) {
+        selectDriveVideo(video);
+    }
 }
 
 function selectDriveVideo(video) {
@@ -279,6 +316,13 @@ function selectDriveVideo(video) {
 function handleLocalFileSelect(input) {
     if (!input.files || input.files.length === 0) return;
     const file = input.files[0];
+
+    if (file.size > maxUploadSizeBytes) {
+        alert(`Selected file is too large (${formatBytes(file.size)}). Maximum supported file size is ${formatBytes(maxUploadSizeBytes)}.`);
+        input.value = "";
+        return;
+    }
+
     selectedVideo = {
         type: 'local',
         id: null,
@@ -299,7 +343,9 @@ function updateSelectedVideoCard() {
     if (selectedVideo) {
         card.classList.remove("hidden");
         nameEl.textContent = selectedVideo.name;
-        detailsEl.textContent = `${selectedVideo.type === 'drive' ? 'Google Drive' : 'Local File'} • ${formatBytes(selectedVideo.size)}`;
+        const isArchive = selectedVideo.name.endsWith('.zip') || selectedVideo.name.endsWith('.7z');
+        const typeLabel = selectedVideo.type === 'drive' ? 'Google Drive' : (isArchive ? 'Archive Package' : 'Local File');
+        detailsEl.textContent = `${typeLabel} • ${formatBytes(selectedVideo.size)}`;
         convertBtn.disabled = false;
     } else {
         card.classList.add("hidden");
@@ -312,6 +358,47 @@ function clearSelectedVideo() {
     document.getElementById("local-video-input").value = "";
     updateSelectedVideoCard();
     loadDriveFiles(currentFolderId);
+}
+
+function onFolderModeChange() {
+    const mode = document.querySelector('input[name="folder_mode"]:checked')?.value || 'direct_download';
+    const btnText = document.getElementById("convert-btn-text");
+    const btnIcon = document.getElementById("convert-btn-icon");
+    const stepLabel = document.getElementById("step-upload-label");
+    const stepIcon = document.getElementById("step-upload-icon");
+
+    const directContainer = document.getElementById("mode-direct-container");
+    const sourceContainer = document.getElementById("mode-source-container");
+    const rootContainer = document.getElementById("mode-root-container");
+
+    if (directContainer) {
+        directContainer.className = mode === 'direct_download' 
+            ? "flex items-start space-x-2.5 p-3 rounded-xl border border-indigo-500/60 bg-indigo-950/40 cursor-pointer transition"
+            : "flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition";
+    }
+    if (sourceContainer) {
+        sourceContainer.className = mode === 'same_as_source' 
+            ? "flex items-start space-x-2.5 p-3 rounded-xl border border-indigo-500/60 bg-indigo-950/40 cursor-pointer transition"
+            : "flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition";
+    }
+    if (rootContainer) {
+        rootContainer.className = mode === 'root' 
+            ? "flex items-start space-x-2.5 p-3 rounded-xl border border-indigo-500/60 bg-indigo-950/40 cursor-pointer transition"
+            : "flex items-start space-x-2.5 p-3 rounded-xl border border-slate-800 bg-slate-950/40 cursor-pointer hover:border-indigo-500/50 transition";
+    }
+
+    if (mode === "direct_download") {
+        if (btnText) btnText.textContent = "Convert Voice & Direct Download";
+        if (btnIcon) btnIcon.setAttribute("data-lucide", "download");
+        if (stepLabel) stepLabel.textContent = "4. Direct Download Ready";
+        if (stepIcon) stepIcon.setAttribute("data-lucide", "download");
+    } else {
+        if (btnText) btnText.textContent = "Convert Voice & Save to Drive";
+        if (btnIcon) btnIcon.setAttribute("data-lucide", "sparkles");
+        if (stepLabel) stepLabel.textContent = "4. Save to Drive Folder";
+        if (stepIcon) stepIcon.setAttribute("data-lucide", "cloud-upload");
+    }
+    lucide.createIcons();
 }
 
 function switchSourceTab(tab) {
@@ -330,6 +417,13 @@ function switchSourceTab(tab) {
         uploadTab.classList.remove("hidden");
         tabUploadBtn.className = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow transition flex items-center space-x-1.5";
         tabDriveBtn.className = "px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+
+        // Auto-select direct download when on local upload tab
+        const directRadio = document.getElementById("folder-mode-direct");
+        if (directRadio) {
+            directRadio.checked = true;
+            onFolderModeChange();
+        }
     }
 }
 
@@ -371,6 +465,54 @@ async function startConversion() {
     } else if (selectedVideo.type === 'local' && selectedVideo.fileObj) {
         formData.append("upload_file", selectedVideo.fileObj);
         formData.append("file_name", selectedVideo.name);
+    }
+
+    if (selectedVideo.type === 'local' && selectedVideo.fileObj) {
+        updateProgressUI(1, "Starting video upload to server...");
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/convert", true);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const uploadPct = Math.round((e.loaded / e.total) * 100);
+                const loadedStr = formatBytes(e.loaded);
+                const totalStr = formatBytes(e.total);
+                const mappedProgress = Math.max(1, Math.min(20, Math.round(uploadPct * 0.20)));
+                updateProgressUI(mappedProgress, `Uploading video to server: ${uploadPct}% (${loadedStr} / ${totalStr})...`);
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    activeJobId = data.job_id;
+                    listenToJobProgress(activeJobId);
+                } catch (parseErr) {
+                    alert("Unexpected server response format: " + parseErr.message);
+                    convertBtn.disabled = false;
+                    progressCard.classList.add("hidden");
+                }
+            } else {
+                let errMsg = "Upload failed";
+                try {
+                    const err = JSON.parse(xhr.responseText);
+                    errMsg = err.detail || errMsg;
+                } catch (_) {}
+                alert("Error starting conversion: " + errMsg);
+                convertBtn.disabled = false;
+                progressCard.classList.add("hidden");
+            }
+        };
+
+        xhr.onerror = () => {
+            alert("Network error occurred during video upload. Please check your connection.");
+            convertBtn.disabled = false;
+            progressCard.classList.add("hidden");
+        };
+
+        xhr.send(formData);
+        return;
     }
 
     try {
@@ -485,30 +627,42 @@ function showCompletion(data) {
     completionCard.classList.remove("hidden");
     completionCard.scrollIntoView({ behavior: "smooth" });
 
+    const mode = document.querySelector('input[name="folder_mode"]:checked')?.value;
+    const isDirect = mode === "direct_download" || data.dest_folder_mode === "direct_download" || !data.drive_file_id;
+
     // Drive Warning / Storage Quota Notice
     const warningEl = document.getElementById("drive-warning-alert");
     const warningText = document.getElementById("drive-warning-text");
     const titleEl = document.getElementById("completion-title");
     const subtitleEl = document.getElementById("completion-subtitle");
 
-    if (data.drive_warning) {
+    if (data.drive_warning && !isDirect) {
         warningEl.classList.remove("hidden");
         warningText.textContent = data.drive_warning;
         titleEl.textContent = "Voice Dubbing Complete! (Ready to Download)";
         subtitleEl.textContent = "Your video has been converted with synchronized voice. See details below.";
     } else {
         warningEl.classList.add("hidden");
-        titleEl.textContent = "Voice Dubbing & Drive Export Complete!";
-        subtitleEl.textContent = "Your video has been converted and uploaded directly to your Google Drive folder.";
+        if (isDirect) {
+            titleEl.textContent = "🎉 Voice Dubbing Complete!";
+            subtitleEl.textContent = "Your converted video with synchronized voice is ready for direct download.";
+        } else {
+            titleEl.textContent = "Voice Dubbing & Drive Export Complete!";
+            subtitleEl.textContent = "Your video has been converted and uploaded directly to your Google Drive folder.";
+        }
     }
 
     // Buttons
     const btnFolder = document.getElementById("btn-open-drive-folder");
     const btnFile = document.getElementById("btn-open-drive-file");
     const btnDownload = document.getElementById("btn-download-local");
+    const btnZip = document.getElementById("btn-download-zip");
+    const btn7z = document.getElementById("btn-download-7z");
     const folderLabel = document.getElementById("label-open-folder");
 
-    if (data.drive_folder_link) {
+    const jobId = data.job_id || activeJobId;
+
+    if (data.drive_folder_link && !isDirect) {
         btnFolder.href = data.drive_folder_link;
         btnFolder.classList.remove("hidden");
         folderLabel.textContent = `Open "${data.drive_folder_name}" in Drive`;
@@ -516,20 +670,31 @@ function showCompletion(data) {
         btnFolder.classList.add("hidden");
     }
 
-    if (data.drive_file_link) {
+    if (data.drive_file_link && !isDirect) {
         btnFile.href = data.drive_file_link;
         btnFile.classList.remove("hidden");
     } else {
         btnFile.classList.add("hidden");
     }
 
-    btnDownload.href = `/api/download/${data.job_id}`;
+    if (btnDownload) {
+        btnDownload.href = `/api/download/${jobId}`;
+        btnDownload.setAttribute("download", data.filename || "converted_video.mp4");
+    }
+
+    if (btnZip) {
+        btnZip.href = `/api/download/${jobId}/zip`;
+    }
+
+    if (btn7z) {
+        btn7z.href = `/api/download/${jobId}/7z`;
+    }
 
     // Mount players
     const origPlayer = document.getElementById("player-original");
     const convPlayer = document.getElementById("player-converted");
-    origPlayer.src = `/api/preview/${data.job_id}/original`;
-    convPlayer.src = `/api/preview/${data.job_id}/converted`;
+    origPlayer.src = `/api/preview/${jobId}/original`;
+    convPlayer.src = `/api/preview/${jobId}/converted`;
 
     const langName = document.getElementById("language-select").selectedOptions[0]?.text || "Selected Language";
     document.getElementById("label-converted-preview").textContent = `Converted Video (${langName})`;
