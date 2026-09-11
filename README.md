@@ -25,6 +25,51 @@ It extracts audio from video files stored in Google Drive (or local upload), tra
 
 ---
 
+## 💻 System Prerequisites
+
+### 1. Hardware Requirements
+| Component | Minimum Specification | Recommended Specification |
+| :--- | :--- | :--- |
+| **Processor (CPU)** | Dual-Core (x86_64 or ARM64) | 4 Cores or higher |
+| **RAM (Memory)** | 2 GB | 4 GB - 8 GB (for faster video muxing) |
+| **Disk Storage** | 1.5 GB free space | 5 GB+ (depends on video file sizes) |
+| **Network** | Active Internet connection (for Google Drive API, STT & Neural TTS) | Broadband connection |
+
+### 2. Software Requirements
+- **Python**: Version `3.9` to `3.14` (Python `3.10` or `3.12` recommended)
+- **Git**: To clone the repository
+- **FFmpeg**: For audio stream extraction, tempo matching, and MP4 remuxing (can be installed via OS package manager or auto-configured by `static-ffmpeg`)
+
+### 3. OS-Specific Setup Commands
+
+#### 🐧 Ubuntu / Debian / Raspberry Pi OS:
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip git ffmpeg
+```
+
+#### 🎩 Fedora / Red Hat / CentOS:
+```bash
+sudo dnf install -y python3 python3-pip git ffmpeg
+```
+
+#### 🏹 Arch Linux:
+```bash
+sudo pacman -S python python-pip git ffmpeg
+```
+
+#### 🪟 Windows:
+1. Install **Python 3.10+** from [python.org](https://www.python.org/downloads/) *(make sure to check **"Add python.exe to PATH"** during setup)*.
+2. Install **Git for Windows** from [git-scm.com](https://git-scm.com).
+3. *(Optional)* FFmpeg will be automatically fetched on first run by `static-ffmpeg`.
+
+#### 🍎 macOS:
+```bash
+brew install python git ffmpeg
+```
+
+---
+
 ## 🚀 Quick Start for Any Client or Collaborator
 
 ### Opening in GitHub Codespaces (1-Click)
