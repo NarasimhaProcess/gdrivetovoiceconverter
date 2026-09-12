@@ -373,6 +373,11 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
             background_volume=background_volume,
             custom_transcript=options.get("custom_script"),
             source_lang=options.get("source_lang", "auto"),
+            voice_mode=options.get("voice_mode", "preset"),
+            clone_source=options.get("clone_source", "upload"),
+            clone_audio_path=Path(options["clone_audio_path"]) if options.get("clone_audio_path") else None,
+            clone_engine=options.get("clone_engine", "acoustic"),
+            elevenlabs_api_key=options.get("elevenlabs_api_key") or os.environ.get("ELEVENLABS_API_KEY"),
             progress_callback=lambda pct, msg: update_job_progress(job_id, pct, msg)
         )
 
@@ -382,6 +387,8 @@ def process_conversion_task(job_id: str, options: Dict[str, Any]):
         jobs[job_id]["voice_audio_path"] = str(voice_audio_path) if voice_audio_path else ""
         jobs[job_id]["original_transcript"] = conv_result["original_transcript"]
         jobs[job_id]["translated_transcript"] = conv_result["translated_transcript"]
+        jobs[job_id]["voice_mode"] = conv_result.get("voice_mode", "preset")
+        jobs[job_id]["clone_profile"] = conv_result.get("clone_profile")
 
         # Step 3: Save to permanent output storage
         lang_folder_name = get_language_folder_name(target_lang)
@@ -490,17 +497,32 @@ async def start_conversion(
     background_volume: float = Form(0.15),
     dest_folder_mode: str = Form("direct_download"),
     source_lang: Optional[str] = Form("auto"),
-    upload_file: Optional[UploadFile] = File(None)
+    voice_mode: str = Form("preset"),
+    clone_source: str = Form("upload"),
+    clone_engine: str = Form("acoustic"),
+    elevenlabs_api_key: Optional[str] = Form(None),
+    upload_file: Optional[UploadFile] = File(None),
+    clone_file: Optional[UploadFile] = File(None)
 ):
     """Starts asynchronous conversion and returns job_id."""
     job_id = str(uuid.uuid4())[:8]
     local_video_path = None
+    job_temp = TEMP_DIR / job_id
+    job_temp.mkdir(parents=True, exist_ok=True)
+
+    # Handle reference voice audio upload for cloning
+    clone_audio_path = None
+    if clone_file and clone_file.filename:
+        raw_clone_name = clone_file.filename
+        clone_audio_path = job_temp / f"ref_clone_{raw_clone_name}"
+        with open(clone_audio_path, "wb") as c_buf:
+            while chunk := await clone_file.read(1024 * 1024):
+                c_buf.write(chunk)
+        logger.info(f"Saved uploaded reference voice sample: {clone_audio_path}")
 
     custom_script = None
     if upload_file and upload_file.filename:
         raw_name = upload_file.filename
-        job_temp = TEMP_DIR / job_id
-        job_temp.mkdir(parents=True, exist_ok=True)
         uploaded_path = job_temp / raw_name
         
         # Stream file in 1MB chunks to disk without loading entire 2GB file into memory
@@ -538,7 +560,8 @@ async def start_conversion(
         "message": "Initializing voice conversion pipeline...",
         "file_name": file_name,
         "target_lang": target_lang,
-        "voice_id": voice_id
+        "voice_id": voice_id,
+        "voice_mode": voice_mode
     }
     job_events[job_id] = asyncio.Queue(maxsize=50)
 
@@ -554,12 +577,42 @@ async def start_conversion(
         "duck_original_audio": duck_original_audio,
         "background_volume": background_volume,
         "dest_folder_mode": dest_folder_mode,
-        "custom_script": custom_script
+        "custom_script": custom_script,
+        "voice_mode": voice_mode,
+        "clone_source": clone_source,
+        "clone_audio_path": str(clone_audio_path) if clone_audio_path else None,
+        "clone_engine": clone_engine,
+        "elevenlabs_api_key": elevenlabs_api_key
     }
 
     background_tasks.add_task(process_conversion_task, job_id, options)
 
     return {"job_id": job_id, "status": "processing"}
+
+
+@app.post("/api/clone/analyze")
+async def analyze_clone_sample(sample_file: UploadFile = File(...)):
+    """Uploads an audio sample and returns the analyzed acoustic profile (pitch, gender, duration)."""
+    temp_sample = TEMP_DIR / f"test_sample_{uuid.uuid4().hex[:6]}_{sample_file.filename}"
+    try:
+        with open(temp_sample, "wb") as bf:
+            while chunk := await sample_file.read(1024 * 1024):
+                bf.write(chunk)
+        from app.voice_cloner import analyze_reference_voice
+        prof = analyze_reference_voice(temp_sample)
+        return {
+            "success": True,
+            "filename": sample_file.filename,
+            "duration": round(prof.duration_sec, 1),
+            "f0": round(prof.f0, 1),
+            "gender": prof.gender,
+            "pitch_scale": round(prof.pitch_scale, 2)
+        }
+    except Exception as e:
+        logger.error(f"Sample analysis failed: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        temp_sample.unlink(missing_ok=True)
 
 
 @app.get("/api/jobs/{job_id}")

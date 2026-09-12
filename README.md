@@ -18,6 +18,12 @@ It extracts audio from video files stored in Google Drive (or local upload), tra
 - **Indian Languages & Professional English Support**:
   - **Indian Languages**: Hindi (हिन्दी), Telugu (తెలుగు), Tamil (தமிழ்), Kannada (ಕನ್ನಡ), Malayalam (മലയാളം), Bengali (বাংলা), Marathi (मराठी), Gujarati (ગુજરાતી), Punjabi (ਪੰਜਾਬੀ), Urdu (اردو).
   - **Professional English**: Indian Accent (Neerja / Prabhat), US Accent (Jenny / Guy / Aria / Christopher), British UK Accent (Sonia / Ryan).
+- **🎙️ AI & Acoustic Voice Cloning Studio (NEW)**:
+  - **Upload Voice Sample**: Clone from any audio file (.wav, .mp3, .m4a, 10s–60s) with live audio preview and automatic pitch ($F_0$) & gender detection.
+  - **Auto-Clone from Video**: Automatically isolates and clones the speaker's vocal characteristics directly from the source video (0 extra files needed).
+  - **Live Microphone Recording**: Record voice directly in your browser with a 1-click 15-second recorder.
+  - **Built-in 100% Free Acoustic Cloner**: High-resolution pitch retuning, formant shifting, and parametric EQ morphing with zero external dependencies.
+  - **ElevenLabs AI Generative Clone**: Optional support for ElevenLabs instant voice cloning API.
 - **Voice-to-Video Synchronization**:
   - **Tempo Alignment**: Automatically matches speech speed to video duration using FFmpeg `atempo` filters so dubbing syncs with scene timing.
   - **Smart Audio Ducking**: Option to retain original background music and ambient sound at a subtle volume while layering the clear converted voice over top.

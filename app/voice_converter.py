@@ -30,6 +30,15 @@ from pydub.silence import split_on_silence, detect_nonsilent
 import speech_recognition as sr
 
 from app.languages import LANGUAGES, get_language_folder_name
+from app.voice_cloner import (
+    VoiceProfile,
+    extract_reference_audio_from_video,
+    convert_to_clean_wav,
+    analyze_reference_voice,
+    get_best_base_voice,
+    apply_acoustic_voice_clone,
+    clone_voice_elevenlabs
+)
 
 logger = logging.getLogger("gdrive_voice_converter")
 
@@ -378,6 +387,11 @@ class VideoVoiceConverter:
         background_volume: float = 0.15,
         custom_transcript: Optional[str] = None,
         source_lang: Optional[str] = "auto",
+        voice_mode: str = "preset",
+        clone_source: str = "upload",
+        clone_audio_path: Optional[Path] = None,
+        clone_engine: str = "acoustic",
+        elevenlabs_api_key: Optional[str] = None,
         progress_callback: Optional[Callable[[int, str], None]] = None
     ) -> Dict[str, Any]:
         """
@@ -485,8 +499,29 @@ class VideoVoiceConverter:
         logger.info(f"Full translated transcript: {translated_transcript[:120]}...")
 
         # Step 4 & 5: Synthesize and Assemble Timeline Audio
+        voice_profile = None
+        ref_clone_wav = None
+        if voice_mode == "clone":
+            if progress_callback:
+                progress_callback(55, "Analyzing voice clone characteristics and pitch profile...")
+            if clone_source == "original_video" or not clone_audio_path or not Path(clone_audio_path).exists():
+                ref_clone_wav = self.work_dir / "clone_video_reference.wav"
+                extracted = extract_reference_audio_from_video(video_path, ref_clone_wav)
+                if not extracted or not ref_clone_wav.exists():
+                    ref_clone_wav = raw_audio_path
+            else:
+                ref_clone_wav = self.work_dir / "clone_uploaded_reference.wav"
+                convert_to_clean_wav(Path(clone_audio_path), ref_clone_wav)
+
+            if ref_clone_wav and Path(ref_clone_wav).exists():
+                voice_profile = analyze_reference_voice(ref_clone_wav)
+                logger.info(f"Using cloned voice profile: {voice_profile}")
+
         if progress_callback:
-            progress_callback(60, f"Synthesizing neural voiceover synchronized with video timeline...")
+            if voice_mode == "clone":
+                progress_callback(60, f"Synthesizing cloned voice synchronized with video timeline...")
+            else:
+                progress_callback(60, f"Synthesizing neural voiceover synchronized with video timeline...")
 
         full_voice_audio = AudioSegment.silent(duration=total_video_ms)
         total_segs = len(segments_to_process)
@@ -497,7 +532,28 @@ class VideoVoiceConverter:
                 progress_callback(seg_pct, f"Synthesizing voice: segment {i + 1} of {total_segs}...")
 
             seg_tts_path = self.work_dir / f"seg_{i}_{uuid.uuid4().hex[:6]}.mp3"
-            generate_speech(seg["translated_text"], target_lang, voice_id, seg_tts_path)
+
+            if voice_mode == "clone" and ref_clone_wav and Path(ref_clone_wav).exists():
+                cloned_ok = False
+                if clone_engine == "elevenlabs" and elevenlabs_api_key:
+                    cloned_ok = clone_voice_elevenlabs(
+                        text=seg["translated_text"],
+                        reference_audio_path=ref_clone_wav,
+                        output_path=seg_tts_path,
+                        api_key=elevenlabs_api_key,
+                        target_lang=target_lang
+                    )
+                if not cloned_ok:
+                    # Built-in Acoustic Cloner (100% Free & Offline)
+                    chosen_gender = voice_profile.gender if voice_profile else "male"
+                    base_voice = get_best_base_voice(target_lang, chosen_gender)
+                    raw_tts_path = self.work_dir / f"raw_tts_{i}_{uuid.uuid4().hex[:6]}.mp3"
+                    generate_speech(seg["translated_text"], target_lang, base_voice, raw_tts_path)
+                    if raw_tts_path.exists() and raw_tts_path.stat().st_size > 200:
+                        apply_acoustic_voice_clone(raw_tts_path, seg_tts_path, voice_profile)
+                        raw_tts_path.unlink(missing_ok=True)
+            else:
+                generate_speech(seg["translated_text"], target_lang, voice_id, seg_tts_path)
 
             if not seg_tts_path.exists() or seg_tts_path.stat().st_size == 0:
                 continue
@@ -590,5 +646,11 @@ class VideoVoiceConverter:
             "translated_transcript": translated_transcript,
             "video_duration": video_duration,
             "tts_duration": voice_dur,
-            "target_lang": target_lang
+            "target_lang": target_lang,
+            "voice_mode": voice_mode,
+            "clone_profile": {
+                "f0": round(voice_profile.f0, 1),
+                "gender": voice_profile.gender,
+                "pitch_scale": round(voice_profile.pitch_scale, 2)
+            } if voice_profile else None
         }

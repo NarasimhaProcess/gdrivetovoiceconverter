@@ -7,11 +7,22 @@ let activeJobId = null;
 let eventSource = null;
 let maxUploadSizeBytes = 2 * 1024 * 1024 * 1024; // 2 GB default
 
+// Voice Cloning state
+let currentVoiceMode = 'preset'; // 'preset' or 'clone'
+let currentCloneSource = 'upload'; // 'upload', 'original_video', 'record'
+let currentCloneEngine = 'acoustic'; // 'acoustic' or 'elevenlabs'
+let cloneFileObj = null; // File or Blob for reference voice
+let mediaRecorder = null;
+let recordedAudioChunks = [];
+let recordTimerInterval = null;
+let recordSecondsLeft = 15;
+
 document.addEventListener("DOMContentLoaded", () => {
     loadConfig();
     checkDriveStatus();
     loadLanguages();
     onFolderModeChange();
+    loadApiKeyLocal();
 });
 
 async function loadConfig() {
@@ -427,6 +438,199 @@ function switchSourceTab(tab) {
     }
 }
 
+// --- Voice Cloning Handlers ---
+function switchVoiceMode(mode) {
+    currentVoiceMode = mode;
+    const presetBtn = document.getElementById("voice-mode-preset-btn");
+    const cloneBtn = document.getElementById("voice-mode-clone-btn");
+    const presetContainer = document.getElementById("voice-preset-container");
+    const cloneContainer = document.getElementById("voice-clone-container");
+    const convertBtnText = document.getElementById("convert-btn-text");
+
+    if (mode === 'clone') {
+        presetBtn.className = "px-3 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1";
+        cloneBtn.className = "px-3 py-1 rounded-lg bg-indigo-600 text-white shadow transition flex items-center space-x-1";
+        presetContainer.classList.add("hidden");
+        cloneContainer.classList.remove("hidden");
+        if (convertBtnText) {
+            convertBtnText.textContent = "Clone Voice & Direct Download";
+        }
+    } else {
+        cloneBtn.className = "px-3 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1";
+        presetBtn.className = "px-3 py-1 rounded-lg bg-indigo-600 text-white shadow transition flex items-center space-x-1";
+        presetContainer.classList.remove("hidden");
+        cloneContainer.classList.add("hidden");
+        if (convertBtnText) {
+            convertBtnText.textContent = "Convert Voice & Direct Download";
+        }
+    }
+    lucide.createIcons();
+}
+
+function switchCloneSource(src) {
+    currentCloneSource = src;
+    const uploadBtn = document.getElementById("clone-src-upload-btn");
+    const videoBtn = document.getElementById("clone-src-video-btn");
+    const recordBtn = document.getElementById("clone-src-record-btn");
+
+    const uploadSection = document.getElementById("clone-upload-section");
+    const videoSection = document.getElementById("clone-video-section");
+    const recordSection = document.getElementById("clone-record-section");
+
+    const inactiveClass = "p-2 rounded-lg text-xs font-medium bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 flex flex-col items-center justify-center text-center transition";
+    const activeClass = "p-2 rounded-lg text-xs font-medium bg-indigo-600/30 border border-indigo-500 text-white flex flex-col items-center justify-center text-center transition";
+
+    uploadBtn.className = src === 'upload' ? activeClass : inactiveClass;
+    videoBtn.className = src === 'original_video' ? activeClass : inactiveClass;
+    recordBtn.className = src === 'record' ? activeClass : inactiveClass;
+
+    uploadSection.classList.toggle("hidden", src !== 'upload');
+    videoSection.classList.toggle("hidden", src !== 'original_video');
+    recordSection.classList.toggle("hidden", src !== 'record');
+
+    lucide.createIcons();
+}
+
+function onCloneFileSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    cloneFileObj = file;
+
+    const prompt = document.getElementById("clone-upload-prompt");
+    if (prompt) prompt.textContent = `Selected: ${file.name} (${formatBytes(file.size)})`;
+
+    mountAudioPreview(file, file.name);
+    analyzeAudioSample(file);
+}
+
+function mountAudioPreview(blobOrFile, name) {
+    const previewBox = document.getElementById("clone-preview-box");
+    const player = document.getElementById("clone-audio-player");
+    const nameLabel = document.getElementById("clone-sample-name");
+    const badge = document.getElementById("clone-sample-badge");
+
+    const url = URL.createObjectURL(blobOrFile);
+    player.src = url;
+    nameLabel.textContent = name;
+    badge.textContent = "Analyzing...";
+    badge.className = "px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 font-mono";
+    previewBox.classList.remove("hidden");
+}
+
+async function analyzeAudioSample(file) {
+    const formData = new FormData();
+    formData.append("sample_file", file);
+
+    const statF0 = document.getElementById("stat-f0");
+    const statGender = document.getElementById("stat-gender");
+    const statDuration = document.getElementById("stat-duration");
+    const badge = document.getElementById("clone-sample-badge");
+
+    try {
+        const resp = await fetch("/api/clone/analyze", {
+            method: "POST",
+            body: formData
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.success) {
+                statF0.textContent = `${data.f0} Hz`;
+                statGender.textContent = data.gender.charAt(0).toUpperCase() + data.gender.slice(1);
+                statDuration.textContent = `${data.duration}s`;
+                badge.textContent = "✓ Voice Ready";
+                badge.className = "px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-mono";
+                return;
+            }
+        }
+    } catch (_) {}
+
+    badge.textContent = "Ready";
+    badge.className = "px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 font-mono";
+}
+
+function onCloneEngineChange() {
+    const select = document.getElementById("clone-engine-select");
+    const keyContainer = document.getElementById("elevenlabs-key-container");
+    currentCloneEngine = select.value;
+    keyContainer.classList.toggle("hidden", currentCloneEngine !== "elevenlabs");
+}
+
+function saveApiKeyLocal() {
+    const input = document.getElementById("elevenlabs-api-key-input");
+    if (input) {
+        localStorage.setItem("elevenlabs_api_key", input.value.trim());
+    }
+}
+
+function loadApiKeyLocal() {
+    const saved = localStorage.getItem("elevenlabs_api_key");
+    const input = document.getElementById("elevenlabs-api-key-input");
+    if (saved && input) {
+        input.value = saved;
+    }
+}
+
+async function toggleMicRecording() {
+    const btn = document.getElementById("record-mic-btn");
+    const btnText = document.getElementById("record-mic-text");
+    const status = document.getElementById("record-status");
+
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        clearInterval(recordTimerInterval);
+        return;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordedAudioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+                recordedAudioChunks.push(e.data);
+            }
+        };
+
+        mediaRecorder.onstop = () => {
+            stream.getTracks().forEach(t => t.stop());
+            const mime = mediaRecorder.mimeType || "audio/webm";
+            const ext = mime.includes("ogg") ? "ogg" : (mime.includes("wav") ? "wav" : "webm");
+            const audioBlob = new Blob(recordedAudioChunks, { type: mime });
+            const recordedFile = new File([audioBlob], `recorded_voice_${Date.now()}.${ext}`, { type: mime });
+            cloneFileObj = recordedFile;
+
+            btn.className = "px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow transition";
+            btnText.textContent = "Re-record Voice";
+            status.textContent = `Recorded voice sample successfully!`;
+
+            mountAudioPreview(recordedFile, "live_recording.wav");
+            analyzeAudioSample(recordedFile);
+        };
+
+        mediaRecorder.start();
+        recordSecondsLeft = 15;
+        btn.className = "px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow transition animate-pulse";
+        btnText.textContent = `Recording (${recordSecondsLeft}s left) - Click to Stop`;
+        status.textContent = "Speak clearly into your microphone...";
+
+        recordTimerInterval = setInterval(() => {
+            recordSecondsLeft--;
+            if (recordSecondsLeft <= 0) {
+                clearInterval(recordTimerInterval);
+                if (mediaRecorder && mediaRecorder.state === "recording") {
+                    mediaRecorder.stop();
+                }
+            } else {
+                btnText.textContent = `Recording (${recordSecondsLeft}s left) - Click to Stop`;
+            }
+        }, 1000);
+
+    } catch (err) {
+        alert("Microphone access error: " + err.message);
+    }
+}
+
 // 4. Start Conversion
 async function startConversion() {
     if (!selectedVideo) return;
@@ -441,6 +645,22 @@ async function startConversion() {
 
     // Scroll to progress
     progressCard.scrollIntoView({ behavior: "smooth" });
+
+    // Validate Voice Cloning parameters
+    if (currentVoiceMode === "clone") {
+        if (currentCloneSource === "upload" && !cloneFileObj) {
+            alert("Please upload an audio sample or choose 'From Video' to clone from the input video.");
+            convertBtn.disabled = false;
+            progressCard.classList.add("hidden");
+            return;
+        }
+        if (currentCloneSource === "record" && !cloneFileObj) {
+            alert("Please record your voice sample first or select 'From Video'.");
+            convertBtn.disabled = false;
+            progressCard.classList.add("hidden");
+            return;
+        }
+    }
 
     // Gather parameters
     const sourceLang = document.getElementById("source-language-select")?.value || "auto";
@@ -457,6 +677,18 @@ async function startConversion() {
     formData.append("match_duration", matchDuration);
     formData.append("duck_original_audio", ducking);
     formData.append("dest_folder_mode", folderMode);
+
+    // Voice Cloning form fields
+    formData.append("voice_mode", currentVoiceMode);
+    formData.append("clone_source", currentCloneSource);
+    formData.append("clone_engine", document.getElementById("clone-engine-select")?.value || "acoustic");
+    const elevenKey = document.getElementById("elevenlabs-api-key-input")?.value?.trim();
+    if (elevenKey) {
+        formData.append("elevenlabs_api_key", elevenKey);
+    }
+    if (currentVoiceMode === "clone" && cloneFileObj) {
+        formData.append("clone_file", cloneFileObj, cloneFileObj.name || "reference_voice.wav");
+    }
 
     if (selectedVideo.type === 'drive') {
         formData.append("drive_file_id", selectedVideo.id);
@@ -621,6 +853,14 @@ function updateProgressUI(pct, msg) {
     stepStt.className = pct >= 60 ? "step-complete p-2.5 rounded-lg border text-xs flex items-center space-x-2" : (pct >= 28 ? "step-active p-2.5 rounded-lg border text-xs flex items-center space-x-2" : "p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2");
     stepTts.className = pct >= 80 ? "step-complete p-2.5 rounded-lg border text-xs flex items-center space-x-2" : (pct >= 60 ? "step-active p-2.5 rounded-lg border text-xs flex items-center space-x-2" : "p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2");
     stepUpload.className = pct >= 100 ? "step-complete p-2.5 rounded-lg border text-xs flex items-center space-x-2" : (pct >= 82 ? "step-active p-2.5 rounded-lg border text-xs flex items-center space-x-2" : "p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 text-slate-400 flex items-center space-x-2");
+
+    // Dynamic label for Step 3 if cloning
+    if (currentVoiceMode === "clone") {
+        const ttsLabel = stepTts.querySelector("span");
+        if (ttsLabel) {
+            ttsLabel.textContent = pct >= 80 ? "3. Voice Cloned & Remuxed" : "3. Clone Voice & Remux";
+        }
+    }
 }
 
 function showCompletion(data) {
@@ -631,6 +871,7 @@ function showCompletion(data) {
 
     const mode = document.querySelector('input[name="folder_mode"]:checked')?.value;
     const isDirect = mode === "direct_download" || data.dest_folder_mode === "direct_download" || !data.drive_file_id;
+    const isClone = data.voice_mode === "clone" || currentVoiceMode === "clone";
 
     // Drive Warning / Storage Quota Notice
     const warningEl = document.getElementById("drive-warning-alert");
@@ -641,16 +882,38 @@ function showCompletion(data) {
     if (data.drive_warning && !isDirect) {
         warningEl.classList.remove("hidden");
         warningText.textContent = data.drive_warning;
-        titleEl.textContent = "Voice Dubbing Complete! (Ready to Download)";
+        titleEl.textContent = isClone ? "🎙️ Voice Cloning Complete! (Ready to Download)" : "Voice Dubbing Complete! (Ready to Download)";
         subtitleEl.textContent = "Your video has been converted with synchronized voice. See details below.";
     } else {
         warningEl.classList.add("hidden");
-        if (isDirect) {
-            titleEl.textContent = "🎉 Voice Dubbing Complete!";
-            subtitleEl.textContent = "Your converted video with synchronized voice is ready for direct download.";
+        if (isClone) {
+            titleEl.textContent = isDirect ? "🎉 Voice Cloning & Dubbing Complete!" : "🎙️ Voice Cloning & Drive Export Complete!";
+            subtitleEl.textContent = isDirect ? "Your video has been dubbed with the cloned voice and is ready for direct download." : "Your video has been dubbed with the cloned voice and uploaded to Google Drive.";
         } else {
-            titleEl.textContent = "Voice Dubbing & Drive Export Complete!";
-            subtitleEl.textContent = "Your video has been converted and uploaded directly to your Google Drive folder.";
+            if (isDirect) {
+                titleEl.textContent = "🎉 Voice Dubbing Complete!";
+                subtitleEl.textContent = "Your converted video with synchronized voice is ready for direct download.";
+            } else {
+                titleEl.textContent = "Voice Dubbing & Drive Export Complete!";
+                subtitleEl.textContent = "Your video has been converted and uploaded directly to your Google Drive folder.";
+            }
+        }
+    }
+
+    // Voice Clone Badge
+    const cloneBadge = document.getElementById("completion-clone-badge");
+    const cloneStats = document.getElementById("completion-clone-stats");
+    if (cloneBadge) {
+        if (isClone && data.clone_profile) {
+            cloneBadge.classList.remove("hidden");
+            if (cloneStats) {
+                cloneStats.textContent = `Pitch: ${data.clone_profile.f0}Hz • Voice Gender: ${data.clone_profile.gender.toUpperCase()} • Shift Factor: ${data.clone_profile.pitch_scale}x`;
+            }
+        } else if (isClone) {
+            cloneBadge.classList.remove("hidden");
+            if (cloneStats) cloneStats.textContent = "Acoustic Tone & Formant Matched";
+        } else {
+            cloneBadge.classList.add("hidden");
         }
     }
 

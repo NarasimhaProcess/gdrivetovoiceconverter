@@ -200,14 +200,126 @@
                                 </select>
                             </div>
 
-                            <!-- Voice Persona & Gender Selection -->
+                            <!-- Voice Selection Mode: Preset Personas vs Voice Cloning -->
                             <div>
-                                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                                    Neural Voice Persona
-                                </label>
-                                <select id="voice-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition">
-                                    <!-- Populated dynamically -->
-                                </select>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                                        Voice Audio Mode
+                                    </label>
+                                    <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+                                        <button type="button" id="voice-mode-preset-btn" onclick="switchVoiceMode('preset')" class="px-3 py-1 rounded-lg bg-indigo-600 text-white shadow transition flex items-center space-x-1">
+                                            <i data-lucide="volume-2" class="w-3.5 h-3.5 mr-1"></i>
+                                            <span>Neural Personas</span>
+                                        </button>
+                                        <button type="button" id="voice-mode-clone-btn" onclick="switchVoiceMode('clone')" class="px-3 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+                                            <i data-lucide="mic" class="w-3.5 h-3.5 mr-1"></i>
+                                            <span>🎙️ Clone Voice</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- PRESET NEURAL VOICES -->
+                                <div id="voice-preset-container">
+                                    <select id="voice-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                </div>
+
+                                <!-- VOICE CLONING CARD -->
+                                <div id="voice-clone-container" class="hidden p-4 rounded-xl bg-slate-950/70 border border-indigo-500/40 space-y-4">
+                                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+                                            <span class="text-xs font-semibold text-white">Voice Cloning Studio</span>
+                                        </div>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Free & AI Supported</span>
+                                    </div>
+
+                                    <!-- Clone Source Switcher -->
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-400 mb-1.5">Reference Voice Source</label>
+                                        <div class="grid grid-cols-3 gap-2">
+                                            <button type="button" id="clone-src-upload-btn" onclick="switchCloneSource('upload')" class="p-2 rounded-lg text-xs font-medium bg-indigo-600/30 border border-indigo-500 text-white flex flex-col items-center justify-center text-center transition">
+                                                <i data-lucide="upload-cloud" class="w-4 h-4 mb-1 text-indigo-400"></i>
+                                                <span>Upload Audio</span>
+                                            </button>
+                                            <button type="button" id="clone-src-video-btn" onclick="switchCloneSource('original_video')" class="p-2 rounded-lg text-xs font-medium bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 flex flex-col items-center justify-center text-center transition">
+                                                <i data-lucide="film" class="w-4 h-4 mb-1 text-slate-400"></i>
+                                                <span>From Video</span>
+                                            </button>
+                                            <button type="button" id="clone-src-record-btn" onclick="switchCloneSource('record')" class="p-2 rounded-lg text-xs font-medium bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 flex flex-col items-center justify-center text-center transition">
+                                                <i data-lucide="mic" class="w-4 h-4 mb-1 text-slate-400"></i>
+                                                <span>Record Mic</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 1. Upload Voice Audio File -->
+                                    <div id="clone-upload-section" class="space-y-2">
+                                        <label class="block text-[11px] text-slate-300">Upload clean voice recording (WAV, MP3, M4A, 10s–60s):</label>
+                                        <div id="clone-dropzone" onclick="document.getElementById('clone-file-input').click()" class="border-2 border-dashed border-slate-700 hover:border-indigo-500/60 rounded-xl p-3 text-center cursor-pointer bg-slate-900/50 hover:bg-slate-900 transition">
+                                            <input type="file" id="clone-file-input" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" class="hidden" onchange="onCloneFileSelected(event)">
+                                            <i data-lucide="music" class="w-6 h-6 text-indigo-400 mx-auto mb-1"></i>
+                                            <div id="clone-upload-prompt" class="text-xs text-slate-300 font-medium">Click or drag & drop voice sample</div>
+                                            <div class="text-[10px] text-slate-500">Recommended: Clean speech with no background music</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 2. Auto-Clone from Original Video -->
+                                    <div id="clone-video-section" class="hidden p-3 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-xs text-slate-300 space-y-1">
+                                        <div class="flex items-center space-x-1.5 text-indigo-300 font-semibold">
+                                            <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
+                                            <span>Automatic Speaker Extraction</span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400">The studio will automatically isolate clean vocal intervals from your video and clone the speaker's vocal pitch, timbre, and acoustic signature.</p>
+                                    </div>
+
+                                    <!-- 3. Record Live Microphone -->
+                                    <div id="clone-record-section" class="hidden p-3 rounded-lg bg-slate-900 border border-slate-800 text-center space-y-3">
+                                        <div class="flex items-center justify-center space-x-2">
+                                            <button type="button" id="record-mic-btn" onclick="toggleMicRecording()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow transition">
+                                                <i data-lucide="circle-dot" class="w-4 h-4"></i>
+                                                <span id="record-mic-text">Start 15s Recording</span>
+                                            </button>
+                                        </div>
+                                        <div id="record-status" class="text-[11px] text-slate-400">Click to record your voice directly from browser microphone</div>
+                                    </div>
+
+                                    <!-- Audio Preview Player & Analysis Card -->
+                                    <div id="clone-preview-box" class="hidden p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2">
+                                        <div class="flex items-center justify-between text-xs">
+                                            <span id="clone-sample-name" class="font-medium text-slate-200 truncate max-w-[180px]">sample.wav</span>
+                                            <span id="clone-sample-badge" class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-mono">Sample Ready</span>
+                                        </div>
+                                        <audio id="clone-audio-player" controls class="w-full h-8 rounded"></audio>
+                                        <div id="clone-profile-stats" class="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-800/60">
+                                            <span>Pitch: <strong id="stat-f0" class="text-indigo-300">-- Hz</strong></span>
+                                            <span>Gender: <strong id="stat-gender" class="text-indigo-300">--</strong></span>
+                                            <span>Duration: <strong id="stat-duration" class="text-indigo-300">--s</strong></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Cloning Engine Selector -->
+                                    <div class="space-y-2 pt-1 border-t border-slate-800/80">
+                                        <div class="flex items-center justify-between">
+                                            <label class="text-[11px] font-semibold text-slate-400">Cloning Engine</label>
+                                            <select id="clone-engine-select" class="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-indigo-500" onchange="onCloneEngineChange()">
+                                                <option value="acoustic" selected>⚡ Built-in Acoustic Cloner (100% Free)</option>
+                                                <option value="elevenlabs">🌟 ElevenLabs AI Clone (Generative API)</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Optional ElevenLabs API Key Field -->
+                                        <div id="elevenlabs-key-container" class="hidden space-y-1 pt-1">
+                                            <div class="flex items-center justify-between">
+                                                <label class="text-[10px] text-slate-400">ElevenLabs API Key</label>
+                                                <span class="text-[10px] text-indigo-400">xi-api-key</span>
+                                            </div>
+                                            <input type="password" id="elevenlabs-api-key-input" placeholder="xi-api-key..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 font-mono" onchange="saveApiKeyLocal()">
+                                            <p class="text-[10px] text-slate-500">Free tier allows 10,000 characters. Automatically falls back to free acoustic cloner if key is blank or quota exceeded.</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Duration & Voice Matching Options -->
@@ -350,6 +462,13 @@
                     <div>
                         <h3 id="completion-title" class="text-lg font-bold text-white">Voice Dubbing Complete!</h3>
                         <p id="completion-subtitle" class="text-xs text-emerald-300/90">Your video has been converted with synchronized voice and is ready to download.</p>
+                        <div id="completion-clone-badge" class="hidden mt-1.5 flex items-center space-x-2 text-[11px] text-indigo-300">
+                            <span class="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center font-medium">
+                                <i data-lucide="mic" class="w-3 h-3 mr-1 text-indigo-400"></i>
+                                <span>Cloned Voice Synthesized</span>
+                            </span>
+                            <span id="completion-clone-stats" class="text-slate-400 text-[10px]"></span>
+                        </div>
                     </div>
                 </div>
 

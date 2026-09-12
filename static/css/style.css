@@ -26,3 +26,9 @@
     background-color: rgba(16, 185, 129, 0.1) !important;
     color: #34d399 !important;
 }
+
+/* Audio Player Dark Theme */
+audio {
+    filter: invert(0.85) hue-rotate(180deg);
+    border-radius: 8px;
+}
