@@ -1,0 +1,40 @@
+# Download and install the correct aarch64 deb file directly
+curl -L --output cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(dpkg --print-architecture).deb" && sudo dpkg -i cloudflared.deb
+
+# Verify the version to ensure it worked
+cloudflared --version
+
+# cloudflared tunnel --url http://localhost:8000
+
+# for background 
+nohup cloudflared tunnel --url http://localhost:8000 > cloudflared.log 2>&1 &
+
+# for url 
+cat cloudflared.log
+
+
+# open other teminal dont close existing terminal
+
+# error: externally-managed-environment
+
+# × This environment is externally managed
+# ╰─> To install Python packages system-wide, try apt install
+
+#### if you got above error then
+
+# 1. Install the Python virtual environment tool (if you don't have it)
+sudo apt update && sudo apt install python3-venv -y
+
+# 2. Create a virtual environment named 'myenv'
+python3 -m venv myenv
+
+# 3. Activate the environment
+source myenv/bin/activate
+
+# 4. Now run your original installation/dependency command again
+# (Your prompt will now show (myenv) at the beginning of the line)
+
+# run this for detach mode 
+
+nohup ./run.sh > /dev/null 2>&1 &
+
